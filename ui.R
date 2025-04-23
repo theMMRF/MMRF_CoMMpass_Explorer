@@ -44,7 +44,34 @@ dashboardPage(
       menuItem("Gene Expression", icon = icon("filter"),
                selectizeInput("gene_expr_search", "Input a Gene", choices = NULL, multiple = FALSE, options = list(create = TRUE, placeholder = 'Search for a gene')),
                numericInput("gene_expr_threshold", "Expression Threshold", value = NULL, min = 0, step = 0.1)
+      ),
+      
+      menuItem("Survival Filter", icon = icon("hourglass-half"),
+               checkboxInput("enable_survival_filter", "Enable Survival Filtering", value = FALSE),
+               
+               conditionalPanel(
+                 condition = "input.enable_survival_filter == true",
+                 
+                 selectInput("surv_variable", "Select Survival Variable",
+                             choices = c("PFS_censored", "OS_censored"), 
+                             selected = "OS_censored"),
+                 
+                 radioButtons("surv_threshold_type", "Threshold Type",
+                              choices = c("Days" = "value", "Percentile" = "percentile"),
+                              selected = "value", inline = TRUE),
+                 
+                 conditionalPanel(
+                   condition = "input.surv_threshold_type == 'value'",
+                   numericInput("surv_threshold_value", "Survival Threshold (Days)", value = 365, min = 0)
+                 ),
+                 
+                 conditionalPanel(
+                   condition = "input.surv_threshold_type == 'percentile'",
+                   sliderInput("surv_threshold_percentile", "Percentile Threshold", min = 0, max = 100, value = 50)
+                 )
+               )
       )
+      
     )
   ),
   
@@ -66,14 +93,18 @@ dashboardPage(
                ),
                
                fluidRow(
-                 box(title = "Group1 vs Group2 Survival Curve", width = 6,
-                     plotOutput("survCompPlot")
+                 box(title = "Group1 vs Group2 Survival Curve (PFS)", width = 6,
+                     plotOutput("survCompPlot_pfs_censored")
+                 ),
+                 
+                 box(title = "Group1 vs Group2 Survival Curve (OS)", width = 6,
+                     plotOutput("survCompPlot_os_censored")
                  )
                ),
                
                fluidRow(
                  box(title = "Distribution by Group", width = 12,
-                     selectInput("feature", "Enter a clinical feature", choices = setdiff(colnames(clinical_data), c("Tumor_Sample_Barcode", "Age", "Tx", "PFS", "PFS_event")), width = "200px"),
+                     selectInput("feature", "Enter a clinical feature", choices = setdiff(colnames(clinical_data), c("Tumor_Sample_Barcode", "Age", "Tx", "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", "OS_event")), width = "200px"),
                      plotlyOutput("distribution")
                  )
                )

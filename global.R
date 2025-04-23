@@ -10,7 +10,8 @@ lapply(packages, library, character.only = TRUE)
 # Load data ------
 bulkseq <- readRDS("data/bulkseq_baseline.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline.rds")
-clinical_data <- readRDS("data/clinical_data_cleaned.rds")
+# clinical_data <- readRDS("data/clinical_data_cleaned.rds")
+clinical_data <- readRDS("data/clinical_data_cleaned_new_surv.rds")
 maf_data <- readRDS("data/maf_data.rds")
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
@@ -22,6 +23,11 @@ ssgsea_result_c2 <- readRDS("data/ssgsea_result_c2.rds")
 # sc_meta <- readRDS("../../data/commpass_explorer/scRNAseq_metadata.rds")
 # ssgsea_result_ca <- readRDS("../../data/commpass_explorer/ssgsea_result_ca.rds")
 # ssgsea_result_c2 <- readRDS("../../data/commpass_explorer/ssgsea_result_c2.rds")
+
+clinical_data$PFS_cersored <- as.numeric(as.character(clinical_data$PFS_censored))
+clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
+clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
+clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 
 # Helper functions -----------
 # NA processing
@@ -120,8 +126,7 @@ subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, group,
 
 filter_by_gene_expression <- function(clinical_data, gene=NULL, threshold=NULL, group) {
   if (is.null(gene) || is.na(threshold)) return(clinical_data)
-  print(gene)
-  print(threshold)
+  
   if (gene %in% unique(rownames(bulkseq_tpm)) && (group == "group1")) {
     patient_ids <- colnames(bulkseq_tpm[, bulkseq_tpm[gene, ] >= threshold, drop = FALSE])
     print("patient_ids")
@@ -137,9 +142,30 @@ filter_by_gene_expression <- function(clinical_data, gene=NULL, threshold=NULL, 
     clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% patient_ids, ]
   }
   
-  # if clinical_data
-  
   return(clinical_data)
+}
+
+
+filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshold_value, group) {
+  if (!(surv_var %in% colnames(clinical_data))) return(clinical_data)
+  
+  surv_data <- clinical_data[[surv_var]]
+  
+  if (threshold_type == "percentile") {
+    threshold <- quantile(surv_data, probs = threshold_value / 100, na.rm = TRUE)
+  } else {
+    threshold <- threshold_value
+  }
+  
+  if (group == "group1") {
+    filtered <- clinical_data[surv_data >= threshold, ]
+  } else if (group == "group2") {
+    filtered <- clinical_data[surv_data < threshold, ]
+  } else {
+    filtered <- clinical_data
+  }
+  
+  return(filtered)
 }
 
 
@@ -230,80 +256,102 @@ get_group_filters <- function(input, group_id, category) {
 }
 
 filter_group_data <- function(data, filters) {
-  # Apply clinical filters
-  if (!is.null(filters$risk) && length(filters$risk) > 0) {
-    data <- data[Risk %in% filters$risk]
-  }
+  data <- as_tibble(data)  # Ensures compatibility with dplyr functions
   
-  if (!is.null(filters$age) && length(filters$age) > 0) {
-    min_age <- min(clinical_data$Age, na.rm = TRUE)
-    max_age <- max(clinical_data$Age, na.rm = TRUE)
-    if (filters$age[1] != min_age | filters$age[2] != max_age) {
-      data <- data[Age >= filters$age[1] & Age <= filters$age[2]]
+  data <- data %>%
+    # Clinical filters
+    {
+      if (!is.null(filters$risk) && length(filters$risk) > 0)
+        filter(., Risk %in% filters$risk) else .
+    } %>%
+    {
+      if (!is.null(filters$age) && length(filters$age) > 0) {
+        min_age <- min(.$Age, na.rm = TRUE)
+        max_age <- max(.$Age, na.rm = TRUE)
+        if (filters$age[1] != min_age | filters$age[2] != max_age)
+          filter(., Age >= filters$age[1], Age <= filters$age[2]) else .
+      } else .
+    } %>%
+    {
+      if (!is.null(filters$race) && length(filters$race) > 0)
+        filter(., Race %in% filters$race) else .
+    } %>%
+    {
+      if (!is.null(filters$ethnicity) && length(filters$ethnicity) > 0)
+        filter(., Ethnicity %in% filters$ethnicity) else .
+    } %>%
+    {
+      if (!is.null(filters$sex) && length(filters$sex) > 0)
+        filter(., Sex %in% filters$sex) else .
+    } %>%
+    {
+      if (!is.null(filters$stage) && length(filters$stage) > 0)
+        filter(., ISS %in% filters$stage) else .
+    } %>%
+    {
+      if (!is.null(filters$asct) && length(filters$asct) > 0)
+        filter(., ASCT %in% filters$asct) else .
+    } %>%
+    {
+      if (!is.null(filters$triplet) && length(filters$triplet) > 0)
+        filter(., TRIP_FirstLine %in% filters$triplet) else .
+    } %>%
+    
+    # Molecular filters
+    {
+      if (!is.null(filters$diploidy) && length(filters$diploidy) > 0)
+        filter(., Hyperdiploidy %in% filters$diploidy) else .
+    } %>%
+    {
+      if (!is.null(filters$chromothripsis) && length(filters$chromothripsis) > 0)
+        filter(., chromothripsis %in% filters$chromothripsis) else .
+    } %>%
+    {
+      if (!is.null(filters$t11_14) && length(filters$t11_14) > 0)
+        filter(., `t(11;14)` %in% filters$t11_14) else .
+    } %>%
+    {
+      if (!is.null(filters$t4_14) && length(filters$t4_14) > 0)
+        filter(., `t(4;14)` %in% filters$t4_14) else .
+    } %>%
+    {
+      if (!is.null(filters$q21_amp) && length(filters$q21_amp) > 0)
+        filter(., `1q21_amp` %in% filters$q21_amp) else .
+    } %>%
+    {
+      if (!is.null(filters$q21_gain) && length(filters$q21_gain) > 0)
+        filter(., `1q21_gain` %in% filters$q21_gain) else .
+    } %>%
+    {
+      if (!is.null(filters$del13q14) && length(filters$del13q14) > 0)
+        filter(., `13q14_del` %in% filters$del13q14) else .
+    } %>%
+    {
+      if (!is.null(filters$del13q34) && length(filters$del13q34) > 0)
+        filter(., `13q34_del` %in% filters$del13q34) else .
+    } %>%
+    {
+      if (!is.null(filters$del17p13) && length(filters$del17p13) > 0)
+        filter(., `17p13_del` %in% filters$del17p13) else .
+    } %>%
+    
+    # Gene mutation filters
+    {
+      if (!is.null(filters$apobec) && length(filters$apobec) > 0)
+        filter(., APOBEC %in% filters$apobec) else .
+    } %>%
+    {
+      if (!is.null(filters$maf) && length(filters$maf) > 0)
+        filter(., `MAF/MAFB` %in% filters$maf) else .
+    } %>%
+    {
+      if (!is.null(filters$tp53) && length(filters$tp53) > 0)
+        filter(., `TP53 inactivation` %in% filters$tp53) else .
     }
-  }
-  
-  if (!is.null(filters$race) && length(filters$race) > 0) {
-    data <- data[Race %in% filters$race]
-  }
-  if (!is.null(filters$ethnicity) && length(filters$ethnicity) > 0) {
-    data <- data[Ethnicity %in% filters$ethnicity]
-  }
-  if (!is.null(filters$sex) && length(filters$sex) > 0) {
-    data <- data[Sex %in% filters$sex]
-  }
-  if (!is.null(filters$stage) && length(filters$stage) > 0) {
-    data <- data[ISS %in% filters$stage]
-  }
-  if (!is.null(filters$asct) && length(filters$asct) > 0) {
-    data <- data[ASCT %in% filters$asct]
-  }
-  if (!is.null(filters$triplet) && length(filters$triplet) > 0) {
-    data <- data[TRIP_FirstLine %in% filters$triplet]
-  }
-  
-  # Apply molecular filters
-  if (!is.null(filters$diploidy) && length(filters$diploidy) > 0) {
-    data <- data[Hyperdiploidy %in% filters$diploidy]
-  }
-  if (!is.null(filters$chromothripsis) && length(filters$chromothripsis) > 0) {
-    data <- data[chromothripsis %in% filters$chromothripsis]
-  }
-  if (!is.null(filters$t11_14) && length(filters$t11_14) > 0) {
-    data <- data[`t(11;14)` %in% filters$t11_14]
-  }
-  if (!is.null(filters$t4_14) && length(filters$t4_14) > 0) {
-    data <- data[`t(4;14)` %in% filters$t4_14]
-  }
-  if (!is.null(filters$q21_amp) && length(filters$q21_amp) > 0) {
-    data <- data[`1q21_amp` %in% filters$q21_amp]
-  }
-  if (!is.null(filters$q21_gain) && length(filters$q21_gain) > 0) {
-    data <- data[`1q21_gain` %in% filters$q21_gain]
-  }
-  if (!is.null(filters$del13q14) && length(filters$del13q14) > 0) {
-    data <- data[`13q14_del` %in% filters$del13q14]
-  }
-  if (!is.null(filters$del13q34) && length(filters$del13q34) > 0) {
-    data <- data[`13q34_del` %in% filters$del13q34]
-  }
-  if (!is.null(filters$del17p13) && length(filters$del17p13) > 0) {
-    data <- data[`17p13_del` %in% filters$del17p13]
-  }
-  
-  # Apply gene mutation filters
-  if (!is.null(filters$apobec) && length(filters$apobec) > 0) {
-    data <- data[APOBEC %in% filters$apobec]
-  }
-  if (!is.null(filters$maf) && length(filters$maf) > 0) {
-    data <- data[`MAF/MAFB` %in% filters$maf]
-  }
-  if (!is.null(filters$tp53) && length(filters$tp53) > 0) {
-    data <- data[`TP53 inactivation` %in% filters$tp53]
-  }
   
   return(data)
 }
+
 
 # Determine selected group
 get_group_selected <- function(filtered_data, group_selected) {
@@ -536,7 +584,7 @@ tpm_distr_survival <- function(gene_tpm, selected_clinical, grouping_method) {
   # Some samples does not have PFS and PFS_event, so the num of samples used in survival curve and selected_clinical is not consistent
   # Num of NAs: PFS, PFS_event; 308, 12. 
   # Survival curves
-  surv_object <- Surv(time = selected_clinical$PFS, event = selected_clinical$PFS_event)
+  surv_object <- Surv(time = selected_clinical$PFS_censored, event = selected_clinical$PFS_event)
   fit <- do.call(survfit, list(surv_object ~ group, data = selected_clinical))
   ggsurvplot(fit, data = selected_clinical, pval = TRUE,
              risk.table = TRUE, risk.table.col = "strata",
@@ -565,8 +613,16 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   merged_data <- merge(clinical_combined, ssgsea_result_t, by = "Tumor_Sample_Barcode")
   
   # Transform to long data
-  long_data <- melt(merged_data, id.vars = c("Tumor_Sample_Barcode", "group"))
-  colnames(long_data) <- c("Sample", "Group", "GeneSet", "EnrichmentScore")
+  # long_data <- melt(merged_data, id.vars = c("Tumor_Sample_Barcode", "group"))
+  # colnames(long_data) <- c("Sample", "Group", "GeneSet", "EnrichmentScore")
+  long_data <- pivot_longer(
+    merged_data,
+    cols = -c(Tumor_Sample_Barcode, group),
+    names_to = "GeneSet",
+    values_to = "EnrichmentScore"
+  )
+  colnames(long_data)[1:2] <- c("Sample", "Group")
+  
   
   unique_gene_sets <- unique(long_data$GeneSet)
   wilcox_results <- data.frame(GeneSet = character(), p_value = numeric(), stringsAsFactors = FALSE)

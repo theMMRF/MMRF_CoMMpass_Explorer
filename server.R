@@ -60,6 +60,16 @@ shinyServer(function(input, output, session) {
     threshold <- input$gene_expr_threshold
     clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "group1")
     
+    if (isTRUE(input$enable_survival_filter)) {
+      clinical_filtered <- filter_by_survival(
+        clinical_filtered,
+        input$surv_variable,
+        input$surv_threshold_type,
+        if (input$surv_threshold_type == "value") input$surv_threshold_value else input$surv_threshold_percentile,
+        "group1"
+      )
+    }
+    
     return(clinical_filtered)
   })
   
@@ -93,6 +103,17 @@ shinyServer(function(input, output, session) {
     gene_selected <- input$gene_expr_search
     threshold <- input$gene_expr_threshold
     clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "group2")
+    
+    if (isTRUE(input$enable_survival_filter)) {
+      clinical_filtered <- filter_by_survival(
+        clinical_filtered,
+        input$surv_variable,
+        input$surv_threshold_type,
+        if (input$surv_threshold_type == "value") input$surv_threshold_value else input$surv_threshold_percentile,
+        "group2"
+      )
+    }
+    
     return(clinical_filtered)
   })
   
@@ -137,6 +158,7 @@ shinyServer(function(input, output, session) {
     
     gene_interested <- input$gene_search_bulk_distr
     clinical_combined <- filtered_data$combined
+    
     inter_samples <- intersect(clinical_combined$Tumor_Sample_Barcode, colnames(bulkseq_tpm))
     num_sample <- intersect(clinical_data$Tumor_Sample_Barcode, colnames(bulkseq_tpm))
     combined_bulkseq_tpm <- bulkseq_tpm[, inter_samples]
@@ -278,12 +300,13 @@ shinyServer(function(input, output, session) {
     generate_summary_plot("group2", filtered_data)
   })
   
-  # Draw survival curve comparison plot
-  output$survCompPlot <- renderPlot({
+  # Draw survival curve comparison plot (PFS_censored)
+  output$survCompPlot_pfs_censored <- renderPlot({
     req(filtered_data$combined)
     combined_clinical <- filtered_data$combined
     
-    combined_surv <- Surv(combined_clinical$PFS, combined_clinical$PFS_event)
+    combined_surv <- Surv(combined_clinical$PFS_cersored, combined_clinical$PFS_event)
+    
     fit_combined <- do.call(survfit, list(combined_surv ~ group, data = combined_clinical))
     
     ggsurvplot(fit_combined, data = combined_clinical,
@@ -291,8 +314,26 @@ shinyServer(function(input, output, session) {
                tables.theme = theme_void(),
                title = "", conf.int = TRUE, pval = TRUE, risk.table = TRUE,
                fontsize=4, pval.size=4,
-               xlab = "Days",
-               ylab = "Progression-Free Survival"
+               xlab = "Progression Free Survival (Days)",
+               ylab = "Survival Probability"
+    )
+  })
+  
+  # Draw survival curve comparison plot (OS)
+  output$survCompPlot_os_censored <- renderPlot({
+    req(filtered_data$combined)
+    combined_clinical <- filtered_data$combined
+    
+    combined_surv <- Surv(combined_clinical$OS_censored, combined_clinical$OS_event)
+    fit_combined <- do.call(survfit, list(combined_surv ~ group, data = combined_clinical))
+    
+    ggsurvplot(fit_combined, data = combined_clinical,
+               ggtheme = theme_light(),
+               tables.theme = theme_void(),
+               title = "", conf.int = TRUE, pval = TRUE, risk.table = TRUE,
+               fontsize=4, pval.size=4,
+               xlab = "Overall Survival (Days)",
+               ylab = "Survival Probability"
     )
   })
   
