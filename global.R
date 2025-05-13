@@ -24,7 +24,7 @@ ssgsea_result_c2 <- readRDS("data/ssgsea_result_c2.rds")
 # ssgsea_result_ca <- readRDS("../../data/commpass_explorer/ssgsea_result_ca.rds")
 # ssgsea_result_c2 <- readRDS("../../data/commpass_explorer/ssgsea_result_c2.rds")
 
-clinical_data$PFS_cersored <- as.numeric(as.character(clinical_data$PFS_censored))
+clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
@@ -170,6 +170,10 @@ filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshol
 
 
 create_picker_input <- function(inputId, label, choices) {
+  choices <- choices[!is.na(choices)]
+  choices <- choices[choices!=""]
+  print("here")
+  print(choices)
   pickerInput(
     inputId = inputId,
     label = label,
@@ -203,16 +207,19 @@ create_group_filters_ui <- function(group_id, category) {
           return(list(
             create_picker_input(paste0("diploidy_filter_", group_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
             create_picker_input(paste0("chromothripsis_filter_", group_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
-            create_picker_input(paste0("t(11;14)_filter_", group_id), "t(11;14)", sort(unique(clinical_data$`t(11;14)`))),
-            create_picker_input(paste0("t(4;14)_filter_", group_id), "t(4;14)", sort(unique(clinical_data$`t(4;14)`))),
-            create_picker_input(paste0("1q21_amp_filter_", group_id), "1q21_amp", sort(unique(clinical_data$`1q21_amp`))),
-            create_picker_input(paste0("1q21_gain_filter_", group_id), "1q21_gain", sort(unique(clinical_data$`1q21_gain`))),
-            create_picker_input(paste0("13q14_del_filter_", group_id), "13q14_del", sort(unique(clinical_data$`13q14_del`))),
-            create_picker_input(paste0("13q34_del_filter_", group_id), "13q34_del", sort(unique(clinical_data$`13q34_del`))),
-            create_picker_input(paste0("17p13_del_filter_", group_id), "17p13_del", sort(unique(clinical_data$`17p13_del`))),
+            
+            create_picker_input(paste0("t_11_14_filter_", group_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
+            create_picker_input(paste0("t_4_14_filter_", group_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
+            
+            create_picker_input(paste0("chr_1q21_amp_filter_", group_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
+            create_picker_input(paste0("chr_1q21_gain_filter_", group_id), "1q21 Gain", sort(unique(clinical_data$chr_1q21_gain))),
+            create_picker_input(paste0("chr_13q14_del_filter_", group_id), "13q14 Deletion", sort(unique(clinical_data$chr_13q14_del))),
+            create_picker_input(paste0("chr_13q34_del_filter_", group_id), "13q34 Deletion", sort(unique(clinical_data$chr_13q34_del))),
+            create_picker_input(paste0("chr_17p13_del_filter_", group_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
+            
             create_picker_input(paste0("apobec_filter_", group_id), "Apobec", sort(unique(clinical_data$APOBEC))),
-            create_picker_input(paste0("maf_filter_", group_id), "MAF/MAFB", sort(unique(clinical_data$`MAF/MAFB`))),
-            create_picker_input(paste0("tp53_filter_", group_id), "TP53 inactivation", sort(unique(clinical_data$`TP53 inactivation`)))
+            create_picker_input(paste0("MAF_MAFB_filter_", group_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
+            create_picker_input(paste0("tp53_filter_", group_id), "TP53 inactivation", sort(unique(clinical_data$TP53_inactivation)))
           ))
         } else if (category == "gene") {
           
@@ -346,7 +353,7 @@ filter_group_data <- function(data, filters) {
     } %>%
     {
       if (!is.null(filters$tp53) && length(filters$tp53) > 0)
-        filter(., `TP53 inactivation` %in% filters$tp53) else .
+        filter(., TP53_inactivation %in% filters$tp53) else .
     }
   
   return(data)
@@ -809,4 +816,51 @@ cell_cycle_hist <- function(group_info, sc_meta, celltypes) {
          x = "Cell Cycle Phase",
          y = "Percentage of Cells") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+
+create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
+  # Function to create a single stacked barplot for one y feature
+  create_single_plot <- function(data, x_feature, y_feature) {
+    # Ensure factors are properly ordered
+    data[[x_feature]] <- factor(data[[x_feature]])
+    
+    # Handle NA values in a cleaner way
+    data[[y_feature]] <- ifelse(is.na(data[[y_feature]]), "NA", as.character(data[[y_feature]]))
+    data[[y_feature]] <- factor(data[[y_feature]])
+    
+    # Count occurrences of each combination
+    prop_data <- data %>%
+      group_by(!!sym(x_feature), !!sym(y_feature)) %>%
+      summarise(count = n(), .groups = 'drop') %>%
+      group_by(!!sym(x_feature)) %>%
+      mutate(proportion = count / sum(count))
+    
+    # Create plot
+    p <- ggplot(prop_data, aes(x = !!sym(x_feature), y = proportion, fill = !!sym(y_feature))) +
+      geom_bar(stat = "identity", position = "stack", color = "black") +
+      labs(title = paste(y_feature, "by", x_feature),
+           x = x_feature,
+           y = "Proportion",
+           fill = y_feature) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    return(p)
+  }
+  
+  # Create a list of plots
+  plot_list <- lapply(y_features, function(y) {
+    create_single_plot(data, x_feature, y)
+  })
+  
+  # Determine grid layout based on number of plots
+  n_plots <- length(plot_list)
+  n_cols <- min(3, n_plots)  # Maximum 3 columns
+  n_rows <- ceiling(n_plots / n_cols)
+  
+  # Arrange plots in a grid
+  grid_plot <- do.call(grid.arrange, c(plot_list, ncol = n_cols))
+  
+  return(grid_plot)
 }

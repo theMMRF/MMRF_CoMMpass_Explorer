@@ -305,17 +305,48 @@ shinyServer(function(input, output, session) {
     req(filtered_data$combined)
     combined_clinical <- filtered_data$combined
     
-    combined_surv <- Surv(combined_clinical$PFS_cersored, combined_clinical$PFS_event)
+    combined_surv <- Surv(combined_clinical$PFS_censored, combined_clinical$PFS_event)
     
     fit_combined <- do.call(survfit, list(combined_surv ~ group, data = combined_clinical))
     
     ggsurvplot(fit_combined, data = combined_clinical,
-               ggtheme = theme_light(),
-               tables.theme = theme_void(),
-               title = "", conf.int = TRUE, pval = TRUE, risk.table = TRUE,
-               fontsize=4, pval.size=4,
-               xlab = "Progression Free Survival (Days)",
-               ylab = "Survival Probability"
+               # Core aesthetics
+               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Group1, teal for Group2)
+               linetype = c("solid", "solid"),
+               size = 1,           # Line thickness
+               
+               # Statistical elements
+               conf.int = TRUE,
+               pval = TRUE,
+               pval.coord = c(500, 0.1),
+               
+               # Labels and titles
+               title = "",  
+               xlab = "Progression-Free Survival (Days)",
+               ylab = "Survival Probability",
+               legend.title = "",
+               legend.labs = c("Group1", "Group2"),
+               
+               # Risk table configuration
+               risk.table = TRUE,
+               risk.table.height = 0.25,
+               risk.table.title = "Number at risk",
+               risk.table.fontsize = 3.5,
+               tables.theme = theme_cleantable(),
+               
+               # Formatting and theme
+               ggtheme = theme_bw() + theme(
+                 panel.grid.minor = element_blank(),
+                 axis.title = element_text(face = "bold", size = 12),
+                 axis.text = element_text(size = 10),
+                 legend.position = "top",
+                 legend.text = element_text(size = 10),
+                 plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
+               ),
+               
+               # Customize the axes
+               break.time.by = 500,  # X-axis tick marks every 500 days
+               surv.scale = "percent" # Y-axis in percentage
     )
   })
   
@@ -325,29 +356,61 @@ shinyServer(function(input, output, session) {
     combined_clinical <- filtered_data$combined
     
     combined_surv <- Surv(combined_clinical$OS_censored, combined_clinical$OS_event)
+    
     fit_combined <- do.call(survfit, list(combined_surv ~ group, data = combined_clinical))
     
     ggsurvplot(fit_combined, data = combined_clinical,
-               ggtheme = theme_light(),
-               tables.theme = theme_void(),
-               title = "", conf.int = TRUE, pval = TRUE, risk.table = TRUE,
-               fontsize=4, pval.size=4,
+               # Core aesthetics
+               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Group1, teal for Group2)
+               linetype = c("solid", "solid"),
+               size = 1,           # Line thickness
+               
+               # Statistical elements
+               conf.int = TRUE,    # Show 95% confidence intervals
+               pval = TRUE,        # Show p-value
+               pval.coord = c(500, 0.1), # Position of p-value
+               
+               # Labels and titles
+               title = "",  
                xlab = "Overall Survival (Days)",
-               ylab = "Survival Probability"
+               ylab = "Survival Probability",
+               legend.title = "",
+               legend.labs = c("Group1", "Group2"),
+               
+               # Risk table configuration
+               risk.table = TRUE,
+               risk.table.height = 0.25,
+               risk.table.title = "Number at risk",
+               risk.table.fontsize = 3.5,
+               tables.theme = theme_cleantable(),
+               
+               # Formatting and theme
+               ggtheme = theme_bw() + theme(
+                 panel.grid.minor = element_blank(),
+                 axis.title = element_text(face = "bold", size = 12),
+                 axis.text = element_text(size = 10),
+                 legend.position = "top",
+                 legend.text = element_text(size = 10),
+                 plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
+               ),
+               
+               # Customize the axes
+               break.time.by = 500,  # X-axis tick marks every 500 days
+               surv.scale = "percent" # Y-axis in percentage
     )
   })
   
   # Distribution
-  output$distribution <- renderPlotly({
+  output$clin_distribution <- renderPlotly({
     combined_data <- filtered_data$combined
-    interested_feature <- input$feature
+    interested_feature <- input$clin_feature
     
     # Handle column names with numbers or special characters
     interested_feature <- paste0("`", interested_feature, "`")
     
     p <- ggplot(combined_data, aes_string(x = interested_feature, alpha = "group", fill = "group")) +
       geom_bar(position = "dodge") +
-      labs(title = "", x = interested_feature, y = "Count") +
+      labs(title = "", x = input$clin_feature, y = "Count") +
       scale_alpha_manual(values = c(Group1 = 1, Group2 = 0.5)) +
       scale_fill_manual(values = c(Group1 = "#E87D72", Group2 = "#5BAEB0")) +
       theme_minimal() +
@@ -688,4 +751,16 @@ shinyServer(function(input, output, session) {
     
     cell_cycle_hist(group_info, sc_meta, celltypes_interested)
   })
+  
+  # Feature Distribution Analysis
+  output$feature_distribution_plot <- renderPlot({
+    req(input$feature_x, input$feature_y)
+    
+    create_distribution_stacked_barplot(
+      data = clinical_data,
+      x_feature = input$feature_x,
+      y_features = input$feature_y
+    )
+  })
+  
 })

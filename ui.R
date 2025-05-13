@@ -104,8 +104,8 @@ dashboardPage(
                
                fluidRow(
                  box(title = "Distribution by Group", width = 12,
-                     selectInput("feature", "Enter a clinical feature", choices = setdiff(colnames(clinical_data), c("Tumor_Sample_Barcode", "Age", "Tx", "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", "OS_event")), width = "200px"),
-                     plotlyOutput("distribution")
+                     selectInput("clin_feature", "Enter a clinical feature", choices = setdiff(colnames(clinical_data), c("Tumor_Sample_Barcode", "Age", "Tx", "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", "OS_event")), width = "200px"),
+                     plotlyOutput("clin_distribution")
                  )
                )
       ),
@@ -191,8 +191,6 @@ dashboardPage(
                      plotlyOutput("tpm_distr")
                  )
                ),
-               
-               
                
                fluidRow(
                  box(title = "", width = 12,
@@ -283,6 +281,33 @@ dashboardPage(
                        options = list(create = TRUE, placeholder = 'Search for cell types')
                      ),
                      plotOutput("sc_cellcycle_hist")
+                 )
+               )
+      ),
+      
+      tabPanel("Feature Distribution Analysis",
+               fluidRow(
+                 box(title = "Select Features", width = 12,
+                     column(6, 
+                            selectInput("feature_x", "Primary Feature (X-axis)", 
+                                        choices = setdiff(colnames(clinical_data), 
+                                                          c("Tumor_Sample_Barcode", "Age", "PFS", "PFS_event", "PFS_censored", 
+                                                            "OS", "OS_censored", "OS_event")),
+                                        selected = "chr_1q21_gain")
+                     ),
+                     column(6, 
+                            selectInput("feature_y", "Secondary Features to Display", 
+                                        choices = setdiff(colnames(clinical_data), 
+                                                          c("Tumor_Sample_Barcode", "Age", "PFS", "PFS_event", "PFS_censored", 
+                                                            "OS", "OS_censored", "OS_event")),
+                                        multiple = TRUE,
+                                        selected = c("Sex", "Ethnicity", "ISS"))
+                     )
+                 )
+               ),
+               fluidRow(
+                 box(title = "Distribution Plots", width = 12,
+                     plotOutput("feature_distribution_plot", height = "800px")
                  )
                )
       )
