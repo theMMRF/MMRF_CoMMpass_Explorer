@@ -156,3 +156,18 @@ hr {
   border: 1px solid #ccc;
   color: #333;
 }
+
+/* === BUTTONS === */
+.btn-primary {
+  background-color: #771544;
+  border-color: #5e1034;
+  color: white;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: #5e1034;
+  border-color: #5e1034;
+  color: white;
+}

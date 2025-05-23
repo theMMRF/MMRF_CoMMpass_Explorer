@@ -12,28 +12,28 @@ dashboardPage(
       id = "sidebarMenu",
       
       # Filters
-      menuItem("Group 1 Filters", icon = icon("filter"),
-               div(id = "group1_filters",
+      menuItem("Cohort 1 Filters", icon = icon("filter"),
+               div(id = "cohort1_filters",
                    menuItem("Clinical Features", icon = icon("heartbeat"),
-                            create_group_filters_ui("group1", "clinical")),
+                            create_cohort_filters_ui("cohort1", "clinical")),
                    menuItem("Molecular Features", icon = icon("dna"),
-                            create_group_filters_ui("group1", "molecular"))
+                            create_cohort_filters_ui("cohort1", "molecular"))
                    # menuItem("Gene Mutations", icon = icon("vial"),
-                   #          create_group_filters_ui("group1", "gene"))
+                   #          create_cohort_filters_ui("cohort1", "gene"))
                ),
-               actionButton("clear_group1", "Clear All Group 1 Filters", icon = icon("times")) # Clear button for Group 1
+               actionButton("clear_cohort1", "Clear All Cohort 1 Filters", icon = icon("times")) # Clear button for Cohort 1
       ),
       
-      menuItem("Group 2 Filters", icon = icon("filter"),
-               div(id = "group2_filters",
+      menuItem("Cohort 2 Filters", icon = icon("filter"),
+               div(id = "cohort2_filters",
                    menuItem("Clinical Features", icon = icon("heartbeat"),
-                            create_group_filters_ui("group2", "clinical")),
+                            create_cohort_filters_ui("cohort2", "clinical")),
                    menuItem("Molecular Features", icon = icon("dna"),
-                            create_group_filters_ui("group2", "molecular"))
+                            create_cohort_filters_ui("cohort2", "molecular"))
                    # menuItem("Gene Mutations", icon = icon("vial"),
-                   #          create_group_filters_ui("group2", "gene"))
+                   #          create_cohort_filters_ui("cohort2", "gene"))
                ),
-               actionButton("clear_group2", "Clear All Group 2 Filters", icon = icon("times"))
+               actionButton("clear_cohort2", "Clear All Cohort 2 Filters", icon = icon("times"))
       ),
       
       menuItem("Gene Mutations", icon = icon("filter"),
@@ -43,7 +43,10 @@ dashboardPage(
       
       menuItem("Gene Expression", icon = icon("filter"),
                selectizeInput("gene_expr_search", "Input a Gene", choices = NULL, multiple = FALSE, options = list(create = TRUE, placeholder = 'Search for a gene')),
-               numericInput("gene_expr_threshold", "Expression Threshold", value = NULL, min = 0, step = 0.1)
+               radioButtons("expr_threshold_type", "Threshold Type",
+                            choices = c("value", "percentile"), selected = "percentile"),
+               numericInput("gene_expr_threshold", "Expression Threshold", value = NULL, min = 0, step = 1)
+               
       ),
       
       menuItem("Survival Filter", icon = icon("hourglass-half"),
@@ -70,7 +73,8 @@ dashboardPage(
                    sliderInput("surv_threshold_percentile", "Percentile Threshold", min = 0, max = 100, value = 50)
                  )
                )
-      )
+      ),
+      actionButton("apply_filters", "Apply Filters", icon = icon("play"), class = "btn-primary")
       
     )
   ),
@@ -86,27 +90,27 @@ dashboardPage(
                  column(12, htmlOutput("clinicalNum"))
                ),
                fluidRow(
-                 box(title = "Group 1", width = 6,
+                 box(title = "Cohort 1", width = 6,
                      plotOutput("summaryPlot_g1")
                  ),
                  
-                 box(title = "Group 2", width = 6,
+                 box(title = "Cohort 2", width = 6,
                      plotOutput("summaryPlot_g2")
                  )
                ),
                
                fluidRow(
-                 box(title = "Group1 vs Group2 Survival Curve (PFS)", width = 6,
+                 box(title = "Cohort1 vs Cohort2 Survival Curve (PFS)", width = 6,
                      plotOutput("survCompPlot_pfs_censored")
                  ),
                  
-                 box(title = "Group1 vs Group2 Survival Curve (OS)", width = 6,
+                 box(title = "Cohort1 vs Cohort2 Survival Curve (OS)", width = 6,
                      plotOutput("survCompPlot_os_censored")
                  )
                ),
                
                fluidRow(
-                 box(title = "Distribution by Group", width = 12,
+                 box(title = "Distribution by Cohort", width = 12,
                      selectInput("clin_feature", 
                                  "Enter a clinical feature", 
                                  choices = get_clinical_feature_choices(clinical_data), 
@@ -116,7 +120,7 @@ dashboardPage(
                ),
                fluidRow(
                  box(title = "Clinical Feature Significance Table", width = 12,
-                     p("Statistical comparison of clinical features between Group 1 and Group 2."),
+                     p("Statistical comparison of clinical features between Cohort 1 and Cohort 2."),
                      p(HTML("<strong>Significance levels:</strong> *** p<0.001, ** p<0.01, * p<0.05, NS = Not Significant")),
                      DTOutput("significance_table")
                  )
@@ -131,10 +135,10 @@ dashboardPage(
                
                # MAF summary
                fluidRow(
-                 box(title = "Group 1", width = 6,
+                 box(title = "Cohort 1", width = 6,
                      plotOutput("mafSummary_g1")
                  ),
-                 box(title = "Group 2", width = 6,
+                 box(title = "Cohort 2", width = 6,
                      plotOutput("mafSummary_g2")
                  )
                ),
@@ -199,8 +203,10 @@ dashboardPage(
       
       tabPanel("Tumor Profile",
                fluidRow(
+                 column(12, htmlOutput("bulkNum"))
+               ),
+               fluidRow(
                  box(title = "TPM Distribution", width = 12,
-                     htmlOutput("bulkNum"),
                      selectizeInput("gene_search_bulk_distr", "Enter Gene", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
                      plotlyOutput("tpm_distr")
                  )
@@ -213,30 +219,30 @@ dashboardPage(
                ),
                
                fluidRow(
-                 box(title = "Group 1", width = 6,
-                     # p("This plot visualizes the survival probability of patient samples of the selected group based on the expression levels of a gene selected in TPM Distribution box."),
-                     selectInput("grouping_method_tpm_g1", "Grouping Method", choices = c("quartiles", "median"), width = "150px"),
+                 box(title = "Cohort 1", width = 6,
+                     # p("This plot visualizes the survival probability of patient samples of the selected cohort based on the expression levels of a gene selected in TPM Distribution box."),
+                     selectInput("cohorting_method_tpm_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
                      plotOutput("tpm_survCompPlot_g1")
                  ),
-                 box(title = "Group 2", width = 6,
-                     selectInput("grouping_method_tpm_g2", "Grouping Method", choices = c("quartiles", "median"), width = "150px"),
+                 box(title = "Cohort 2", width = 6,
+                     selectInput("cohorting_method_tpm_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
                      plotOutput("tpm_survCompPlot_g2")
                  )
                ),
                
                fluidRow(
                  box(title = "", width = 6,
-                     DTOutput("quantile_table_group1"),
+                     DTOutput("quantile_table_cohort1"),
                  ),
                  
                  box(title = "", width = 6,
-                     DTOutput("quantile_table_group2"),
+                     DTOutput("quantile_table_cohort2"),
                  )
                ),
                
                fluidRow(
                  box(title = "DESeq2", width = 12,
-                     p("The DESeq2 analysis will perform differential expression analysis on Group 1 and Group 2,"),
+                     p("The DESeq2 analysis will perform differential expression analysis on Cohort 1 and Cohort 2,"),
                      p("comparing their gene expression profiles to identify significant differences. Click 'Start DESeq2 Analysis' to proceed."),
                      p("Each run would take several minutes depending on the sample size."),
                      fluidRow(
@@ -287,8 +293,10 @@ dashboardPage(
       
       tabPanel("Immune Microenvironment",
                fluidRow(
+                 column(12, htmlOutput("scNum"))
+               ),
+               fluidRow(
                  box(title = "Cell Type Abundance", width = 12,
-                     htmlOutput("scNum"),
                      plotOutput("sc_celltype_boxplot")
                  )
                ),
@@ -312,54 +320,27 @@ dashboardPage(
                      plotOutput("sc_cellcycle_hist")
                  )
                )
-      ),
-      
-      tabPanel("Feature Distribution Analysis",
-               fluidRow(
-                 box(title = "Select Features", width = 12,
-                     column(6, 
-                            selectInput("feature_x", "Primary Feature (X-axis)", 
-                                        choices = setdiff(colnames(clinical_data), 
-                                                          c("Tumor_Sample_Barcode", "Age", "PFS", "PFS_event", "PFS_censored", 
-                                                            "OS", "OS_censored", "OS_event")),
-                                        selected = "chr_1q21_gain")
-                     ),
-                     column(6, 
-                            selectInput("feature_y", "Secondary Features to Display", 
-                                        choices = setdiff(colnames(clinical_data), 
-                                                          c("Tumor_Sample_Barcode", "Age", "PFS", "PFS_event", "PFS_censored", 
-                                                            "OS", "OS_censored", "OS_event")),
-                                        multiple = TRUE,
-                                        selected = c("Sex", "Ethnicity", "ISS"))
-                     )
-                 )
-               ),
-               fluidRow(
-                 box(title = "Distribution Plots", width = 12,
-                     plotOutput("feature_distribution_plot", height = "800px")
-                 )
-               )
-      ),
-      tags$div(
-        style = "text-align: center; padding: 30px 10px 20px 10px; border-top: 1px solid #ccc; background-color: #f9f9f9;",
-        
-        tags$img(src = "MMRF_sign.png", height = "40px", style = "margin-bottom: 10px;"),
-        
-        tags$p(
-          strong("Reference: "), 
-          "Zhang W, Acharya C.R. (Chuck), ", 
-          em("Multiple Myeloma Research Foundation (MMRF)"),
-          strong(", "),
-          " (2024). doi: ", 
-          tags$a("[Link]", href = "", target = "_blank"),
-          style = "font-size: 90%; color: #771544;"
-        ),
-        
-        tags$p(
-          HTML("&copy; 2025 Multiple Myeloma Research Foundation"),
-          style = "font-size: 85%; color: #555;"
-        )
       )
     ),
+    tags$div(
+      style = "text-align: center; padding: 30px 10px 20px 10px; border-top: 1px solid #ccc; background-color: #f9f9f9;",
+      
+      tags$img(src = "MMRF_sign.png", height = "40px", style = "margin-bottom: 10px;"),
+      
+      tags$p(
+        strong("Reference: "), 
+        "Zhang W, Acharya C.R. (Chuck), ", 
+        em("Multiple Myeloma Research Foundation (MMRF)"),
+        strong(", "),
+        " (2025). doi: ", 
+        tags$a("[Link]", href = "", target = "_blank"),
+        style = "font-size: 90%; color: #771544;"
+      ),
+      
+      tags$p(
+        HTML("&copy; 2025 Multiple Myeloma Research Foundation"),
+        style = "font-size: 85%; color: #555;"
+      )
+    )
   )
 )

@@ -14,136 +14,145 @@ shinyServer(function(input, output, session) {
   })
   
   # Filters interface
-  # Group 1
-  output$age_filter_group1 <- renderUI({
+  # Cohort 1
+  output$age_filter_cohort1 <- renderUI({
     min_age <- min(clinical_data$Age, na.rm = TRUE)
     max_age <- max(clinical_data$Age, na.rm = TRUE)
-    sliderInput("age_group1", "Age", min = min_age, max = max_age, value = c(min_age, max_age))
+    sliderInput("age_cohort1", "Age", min = min_age, max = max_age, value = c(min_age, max_age))
   })
   
-  # Clear Group 1 filters when the "Clear" button is clicked
-  observeEvent(input$clear_group1, {
-    shinyjs::reset("group1_filters") # Resets all inputs within the div for Group 1 filters
+  # Clear Cohort 1 filters when the "Clear" button is clicked
+  observeEvent(input$clear_cohort1, {
+    shinyjs::reset("cohort1_filters") # Resets all inputs within the div for Cohort 1 filters
   })
   
-  observeEvent(input$clear_group2, {
-    shinyjs::reset("group2_filters")
+  observeEvent(input$clear_cohort2, {
+    shinyjs::reset("cohort2_filters")
   })
   
-  group1_filters <- reactive({
+  cohort1_filters <- reactive({
     c(
-      get_group_filters(input, "group1", "clinical"),
-      get_group_filters(input, "group1", "molecular"),
-      get_group_filters(input, "group1", "gene")
+      get_cohort_filters(input, "cohort1", "clinical"),
+      get_cohort_filters(input, "cohort1", "molecular"),
+      get_cohort_filters(input, "cohort1", "gene")
     )
   })
   
-  filtered_data_group1 <- reactive({
-    clinical_filtered <- filter_group_data(clinical_data, group1_filters())
+  filtered_data_cohort1 <- eventReactive(input$apply_filters, {
+    clinical_filtered <- filter_cohort_data(clinical_data, cohort1_filters())
     clinical_error <- copy(clinical_filtered)
     
-    include_genes <- input$gene_include_filter
-    clinical_filtered <- subset_by_gene_mutations(clinical_filtered, include_genes, "group1", input$mut_logic)
-
-    if (dim(clinical_filtered)[1] == 0) {
-      showNotification("No patients in Group 1 match the selected genes. Please reset the filter and select different genes.", type = "error")
-      clinical_filtered <- copy(clinical_error)
+    include_genes <- isolate(input$gene_include_filter)
+    mut_logic <- isolate(input$mut_logic)
+    clinical_filtered <- subset_by_gene_mutations(clinical_filtered, include_genes, "cohort1", mut_logic)
+    
+    if (nrow(clinical_filtered) == 0) {
+      showNotification("No patients in Cohort 1 match the selected genes.", type = "error")
+      return(clinical_error)
     }
     
-    gene_selected <- input$gene_expr_search
-    threshold <- input$gene_expr_threshold
-    clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "group1")
+    gene_selected <- isolate(input$gene_expr_search)
+    threshold <- isolate(input$gene_expr_threshold)
+    threshold_type <- isolate(input$expr_threshold_type)
+    clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "cohort1", threshold_type)
     
-    if (isTRUE(input$enable_survival_filter)) {
-      clinical_filtered <- filter_by_survival(
-        clinical_filtered,
-        input$surv_variable,
-        input$surv_threshold_type,
-        if (input$surv_threshold_type == "value") input$surv_threshold_value else input$surv_threshold_percentile,
-        "group1"
-      )
+    if (isTRUE(isolate(input$enable_survival_filter))) {
+      surv_variable <- isolate(input$surv_variable)
+      surv_type <- isolate(input$surv_threshold_type)
+      surv_threshold <- if (surv_type == "value") isolate(input$surv_threshold_value) else isolate(input$surv_threshold_percentile)
+      
+      clinical_filtered <- filter_by_survival(clinical_filtered, surv_variable, surv_type, surv_threshold, "cohort1")
     }
     
     return(clinical_filtered)
   })
   
-  # Group 2
-  output$age_filter_group2 <- renderUI({
+  # Cohort 2
+  output$age_filter_cohort2 <- renderUI({
     min_age <- min(clinical_data$Age, na.rm = TRUE)
     max_age <- max(clinical_data$Age, na.rm = TRUE)
-    sliderInput("age_group2", "Age", min = min_age, max = max_age, value = c(min_age, max_age))
+    sliderInput("age_cohort2", "Age", min = min_age, max = max_age, value = c(min_age, max_age))
   })
   
-  group2_filters <- reactive({
+  cohort2_filters <- reactive({
     c(
-      get_group_filters(input, "group2", "clinical"),
-      get_group_filters(input, "group2", "molecular"),
-      get_group_filters(input, "group2", "gene")
+      get_cohort_filters(input, "cohort2", "clinical"),
+      get_cohort_filters(input, "cohort2", "molecular"),
+      get_cohort_filters(input, "cohort2", "gene")
     )
   })
   
-  filtered_data_group2 <- reactive({
-    clinical_filtered <- filter_group_data(clinical_data, group2_filters())
+  filtered_data_cohort2 <- eventReactive(input$apply_filters, {
+    clinical_filtered <- filter_cohort_data(clinical_data, cohort2_filters())
     clinical_error <- copy(clinical_filtered)
     
-    include_genes <- input$gene_include_filter
-    clinical_filtered <- subset_by_gene_mutations(clinical_filtered, include_genes, "group2", input$mut_logic)
+    include_genes <- isolate(input$gene_include_filter)
+    mut_logic <- isolate(input$mut_logic)
+    clinical_filtered <- subset_by_gene_mutations(clinical_filtered, include_genes, "cohort2", mut_logic)
     
-    if (dim(clinical_filtered)[1] == 0) {
-      showNotification("No patients in Group 2 match the selected genes. Please reset the filter and select different genes.", type = "error")
-      clinical_filtered <- copy(clinical_error)
+    if (nrow(clinical_filtered) == 0) {
+      showNotification("No patients in Cohort 2 match the selected genes.", type = "error")
+      return(clinical_error)
     }
     
-    gene_selected <- input$gene_expr_search
-    threshold <- input$gene_expr_threshold
-    clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "group2")
+    gene_selected <- isolate(input$gene_expr_search)
+    threshold <- isolate(input$gene_expr_threshold)
+    threshold_type <- isolate(input$expr_threshold_type)
+    clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "cohort2", threshold_type)
     
-    if (isTRUE(input$enable_survival_filter)) {
-      clinical_filtered <- filter_by_survival(
-        clinical_filtered,
-        input$surv_variable,
-        input$surv_threshold_type,
-        if (input$surv_threshold_type == "value") input$surv_threshold_value else input$surv_threshold_percentile,
-        "group2"
-      )
+    if (isTRUE(isolate(input$enable_survival_filter))) {
+      surv_variable <- isolate(input$surv_variable)
+      surv_type <- isolate(input$surv_threshold_type)
+      surv_threshold <- if (surv_type == "value") isolate(input$surv_threshold_value) else isolate(input$surv_threshold_percentile)
+      
+      clinical_filtered <- filter_by_survival(clinical_filtered, surv_variable, surv_type, surv_threshold, "cohort2")
     }
     
     return(clinical_filtered)
   })
   
-  # filtered_data that stores combined clinical data and group1, group2 data
+  
+  # filtered_data that stores combined clinical data and cohort1, cohort2 data
   filtered_data <- reactiveValues(
-    group1 = NULL,
-    group2 = NULL,
-    group1_maf = NULL,
-    group2_maf = NULL,
-    combined = NULL,
+    cohort1 = {
+      data_cohort1 <- clinical_data
+      data_cohort1$cohort <- "Cohort1"
+      data_cohort1
+    },
+    cohort2 = {
+      data_cohort2 <- clinical_data
+      data_cohort2$cohort <- "Cohort2"
+      data_cohort2
+    },
+    cohort1_maf = maf_data,
+    cohort2_maf = maf_data,
+    combined = {
+      data_cohort1 <- clinical_data
+      data_cohort1$cohort <- "Cohort1"
+      data_cohort2 <- clinical_data
+      data_cohort2$cohort <- "Cohort2"
+      rbind(data_cohort1, data_cohort2)
+    }
   )
   
-  observeEvent({
-    list(filtered_data_group1(), filtered_data_group2())
-  }, {
-    # Group 1
-    data_group1 <- filtered_data_group1()
-    patient_ids_group1 <- data_group1$Tumor_Sample_Barcode
-    data_group1$group <- "Group1"
+  observeEvent(input$apply_filters, {
+    data_cohort1 <- filtered_data_cohort1()
+    data_cohort2 <- filtered_data_cohort2()
     
-    # Group 2
-    data_group2 <- filtered_data_group2()
-    patient_ids_group2 <- data_group2$Tumor_Sample_Barcode
-    data_group2$group <- "Group2"
+    data_cohort1$cohort <- "Cohort1"
+    data_cohort2$cohort <- "Cohort2"
     
-    # Combine the two groups (# of samples may be greater than # of samples in total)
-    combined_clinical <- rbind(data_group1, data_group2)
+    patient_ids_cohort1 <- data_cohort1$Tumor_Sample_Barcode
+    patient_ids_cohort2 <- data_cohort2$Tumor_Sample_Barcode
     
-    # Update reactive values
+    combined_clinical <- rbind(data_cohort1, data_cohort2)
+    
+    # Update reactiveValues
+    filtered_data$cohort1 <- data_cohort1
+    filtered_data$cohort2 <- data_cohort2
     filtered_data$combined <- combined_clinical
-    filtered_data$group1 <- data_group1
-    filtered_data$group2 <- data_group2
-    
-    # MAF data processing for Group 1 and Group 2
-    filtered_data$group1_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_group1)
-    filtered_data$group2_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_group2)
+    filtered_data$cohort1_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_cohort1)
+    filtered_data$cohort2_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_cohort2)
   })
   
   # Reactive expression for preprocessed bulk RNA-seq data
@@ -167,7 +176,7 @@ shinyServer(function(input, output, session) {
   })
   
   preprocessed_sc_meta <- reactive({
-    clinical_combined <- filtered_data$combined[, c("Tumor_Sample_Barcode", "group")]
+    clinical_combined <- filtered_data$combined[, c("Tumor_Sample_Barcode", "cohort")]
     
     # Get patients in clinical and create public_id column for clinical
     patients_in_clinical <- sapply(strsplit(as.character(clinical_combined$Tumor_Sample_Barcode), "_"),
@@ -179,13 +188,13 @@ shinyServer(function(input, output, session) {
     num_sample <- intersect(clinical_data$Tumor_Sample_Barcode, colnames(sc_meta))
     clinical_combined <- clinical_combined[clinical_combined$public_id %in% inter_samples,]
     
-    group_info <- clinical_combined %>% 
-      distinct(public_id, group) # Select only unique combinations of public_id and group from the clinical_combined
+    cohort_info <- clinical_combined %>% 
+      distinct(public_id, cohort) # Select only unique combinations of public_id and cohort from the clinical_combined
     
     list(
       inter_samples = inter_samples,
       clinical_combined = clinical_combined,
-      group_info = group_info
+      cohort_info = cohort_info
     )
   })
   
@@ -193,46 +202,32 @@ shinyServer(function(input, output, session) {
   # Clinical
   output$clinicalNum <- renderUI({
     num_total <- nrow(clinical_data)
-    num_group1 <- nrow(filtered_data$group1)
-    num_group2 <- nrow(filtered_data$group2)
+    num_cohort1 <- nrow(filtered_data$cohort1)
+    num_cohort2 <- nrow(filtered_data$cohort2)
     text <- sprintf(
-      "Total number of samples: %d.<br>Group 1 (n = %d (%0.2f%%)) vs. Group 2 (n = %d (%0.2f%%))", 
-      num_total,
-      num_group1, 
-      num_group1 / num_total * 100, 
-      num_group2, 
-      num_group2 / num_total * 100
+      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
+     <strong>Total Samples:</strong> %d<br>
+     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
+     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
+   </div>",
+      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
     )
+    
     HTML(text)
   })
   
-  output$clinicalNum <- renderUI({
-    num_total <- nrow(clinical_data)
-    num_group1 <- nrow(filtered_data$group1)
-    num_group2 <- nrow(filtered_data$group2)
-    text <- sprintf(
-      "Total number of samples: %d.<br>Group 1 (n = %d (%0.2f%%)) vs. Group 2 (n = %d (%0.2f%%))", 
-      num_total,
-      num_group1, 
-      num_group1 / num_total * 100, 
-      num_group2, 
-      num_group2 / num_total * 100
-    )
-    HTML(text)
-  })
-  
-  # WGS
+  # MAF
   output$mafNum <- renderUI({
-    num_total <- nrow(clinical_data)
-    num_group1 <- nrow(filtered_data$group1)
-    num_group2 <- nrow(filtered_data$group2)
+    num_total <- uniqueN(maf_data@data$Tumor_Sample_Barcode)
+    num_cohort1 <- nrow(filtered_data$cohort1_maf@clinical.data)
+    num_cohort2 <- nrow(filtered_data$cohort2_maf@clinical.data)
     text <- sprintf(
-      "Total number of samples: %d.<br>Group 1 (n = %d (%0.2f%%)) vs. Group 2 (n = %d (%0.2f%%))", 
-      num_total,
-      num_group1, 
-      num_group1 / num_total * 100, 
-      num_group2, 
-      num_group2 / num_total * 100
+      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
+     <strong>Total Samples:</strong> %d<br>
+     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
+     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
+   </div>",
+      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
     )
     HTML(text)
   })
@@ -242,33 +237,33 @@ shinyServer(function(input, output, session) {
     bulk_clinical <- preprocessed_bulkseq_data()$clinical_combined
     num_sample <- preprocessed_bulkseq_data()$num_sample
     num_total <- length(num_sample)
-    num_group1 <- nrow(bulk_clinical[bulk_clinical$group == "Group1", ])
-    num_group2 <- nrow(bulk_clinical[bulk_clinical$group == "Group2", ])
+    num_cohort1 <- nrow(bulk_clinical[bulk_clinical$cohort == "Cohort1", ])
+    num_cohort2 <- nrow(bulk_clinical[bulk_clinical$cohort == "Cohort2", ])
     text <- sprintf(
-      "Total number of samples: %d.<br>Group 1 (n = %d (%0.2f%%)) vs. Group 2 (n = %d (%0.2f%%))", 
-      num_total,
-      num_group1, 
-      num_group1 / num_total * 100, 
-      num_group2, 
-      num_group2 / num_total * 100
+      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
+     <strong>Total Samples:</strong> %d<br>
+     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
+     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
+   </div>",
+      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
     )
     HTML(text)
   })
   
   # scRNA-seq
   output$scNum <- renderUI({
-    sc_clinical <- preprocessed_sc_meta()$group_info
+    sc_clinical <- preprocessed_sc_meta()$cohort_info
     inter_samples <- preprocessed_sc_meta()$inter_samples
     num_total <- length(inter_samples)
-    num_group1 <- nrow(sc_clinical[sc_clinical$group == "Group1", ])
-    num_group2 <- nrow(sc_clinical[sc_clinical$group == "Group2", ])
+    num_cohort1 <- nrow(sc_clinical[sc_clinical$cohort == "Cohort1", ])
+    num_cohort2 <- nrow(sc_clinical[sc_clinical$cohort == "Cohort2", ])
     text <- sprintf(
-      "Total number of samples: %d.<br>Group 1 (n = %d (%0.2f%%)) vs. Group 2 (n = %d (%0.2f%%))", 
-      num_total,
-      num_group1, 
-      num_group1 / num_total * 100, 
-      num_group2, 
-      num_group2 / num_total * 100
+      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
+     <strong>Total Samples:</strong> %d<br>
+     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
+     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
+   </div>",
+      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
     )
     HTML(text)
   })
@@ -278,8 +273,8 @@ shinyServer(function(input, output, session) {
     updateSelectizeInput(session, "gene_search_lollipop_g1", choices = unique(maf_data@gene.summary$Hugo_Symbol), selected = "KRAS", server = TRUE)
     updateSelectizeInput(session, "gene_search_lollipop_g2", choices = unique(maf_data@gene.summary$Hugo_Symbol), selected = "KRAS", server = TRUE)
     updateSelectizeInput(session, "gene_search_maf", choices = unique(maf_data@gene.summary$Hugo_Symbol), server = TRUE)
-    updateSelectizeInput(session, "gene_search_inter_g1", choices = unique(filtered_data[["group1_maf"]]@gene.summary$Hugo_Symbol), server = TRUE)
-    updateSelectizeInput(session, "gene_search_inter_g2", choices = unique(filtered_data[["group2_maf"]]@gene.summary$Hugo_Symbol), server = TRUE)
+    updateSelectizeInput(session, "gene_search_inter_g1", choices = unique(filtered_data[["cohort1_maf"]]@gene.summary$Hugo_Symbol), server = TRUE)
+    updateSelectizeInput(session, "gene_search_inter_g2", choices = unique(filtered_data[["cohort2_maf"]]@gene.summary$Hugo_Symbol), server = TRUE)
     # updateSelectizeInput(session, "gene_search_bulk_heat", choices = unique(rownames(bulkseq_tpm)), server = TRUE)
     updateSelectizeInput(session, "gene_search_bulk_distr", choices = unique(rownames(bulkseq_tpm)), selected = "KRAS", server = TRUE)
   })
@@ -287,11 +282,11 @@ shinyServer(function(input, output, session) {
   # Summary ----------------------
   # Summary of clinical data
   output$summaryPlot_g1 <- renderPlot({
-    generate_summary_plot("group1", filtered_data)
+    generate_summary_plot("cohort1", filtered_data)
   })
   
   output$summaryPlot_g2 <- renderPlot({
-    generate_summary_plot("group2", filtered_data)
+    generate_summary_plot("cohort2", filtered_data)
   })
   
   # Draw survival curve comparison plot (PFS_censored)
@@ -301,11 +296,11 @@ shinyServer(function(input, output, session) {
     
     combined_surv <- Surv(combined_clinical$PFS_censored, combined_clinical$PFS_event)
     
-    fit_combined <- do.call(survfit, list(combined_surv ~ group, data = combined_clinical))
+    fit_combined <- do.call(survfit, list(combined_surv ~ cohort, data = combined_clinical))
     
     ggsurvplot(fit_combined, data = combined_clinical,
                # Core aesthetics
-               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Group1, teal for Group2)
+               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Cohort1, teal for Cohort2)
                linetype = c("solid", "solid"),
                size = 1,           # Line thickness
                
@@ -319,7 +314,7 @@ shinyServer(function(input, output, session) {
                xlab = "Progression-Free Survival (Days)",
                ylab = "Survival Probability",
                legend.title = "",
-               legend.labs = c("Group1", "Group2"),
+               legend.labs = c("Cohort1", "Cohort2"),
                
                # Risk table configuration
                risk.table = TRUE,
@@ -351,11 +346,11 @@ shinyServer(function(input, output, session) {
     
     combined_surv <- Surv(combined_clinical$OS_censored, combined_clinical$OS_event)
     
-    fit_combined <- do.call(survfit, list(combined_surv ~ group, data = combined_clinical))
+    fit_combined <- do.call(survfit, list(combined_surv ~ cohort, data = combined_clinical))
     
     ggsurvplot(fit_combined, data = combined_clinical,
                # Core aesthetics
-               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Group1, teal for Group2)
+               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Cohort1, teal for Cohort2)
                linetype = c("solid", "solid"),
                size = 1,           # Line thickness
                
@@ -369,7 +364,7 @@ shinyServer(function(input, output, session) {
                xlab = "Overall Survival (Days)",
                ylab = "Survival Probability",
                legend.title = "",
-               legend.labs = c("Group1", "Group2"),
+               legend.labs = c("Cohort1", "Cohort2"),
                
                # Risk table configuration
                risk.table = TRUE,
@@ -434,47 +429,47 @@ shinyServer(function(input, output, session) {
   # WGS -------------------------
   # Draw MAF summary plot
   output$mafSummary_g1 <- renderPlot({
-    group_selected <- "group1"
-    group_selected <- paste0(group_selected, "_maf")
-    plotmafSummary(maf = filtered_data[[group_selected]], addStat = 'median', titvRaw = FALSE)
+    cohort_selected <- "cohort1"
+    cohort_selected <- paste0(cohort_selected, "_maf")
+    plotmafSummary(maf = filtered_data[[cohort_selected]], addStat = 'median', titvRaw = FALSE)
   })
   
   output$mafSummary_g2 <- renderPlot({
-    group_selected <- "group2"
-    group_selected <- paste0(group_selected, "_maf")
-    plotmafSummary(maf = filtered_data[[group_selected]], addStat = 'median', titvRaw = FALSE)
+    cohort_selected <- "cohort2"
+    cohort_selected <- paste0(cohort_selected, "_maf")
+    plotmafSummary(maf = filtered_data[[cohort_selected]], addStat = 'median', titvRaw = FALSE)
   })
   
   # Draw oncoplot
   output$oncoplot_g1 <- renderPlot({
-    group_selected <- "group1"
-    group_selected <- paste0(group_selected, "_maf")
-    oncoplot(maf = filtered_data[[group_selected]], top = 10)
+    cohort_selected <- "cohort1"
+    cohort_selected <- paste0(cohort_selected, "_maf")
+    oncoplot(maf = filtered_data[[cohort_selected]], top = 10)
   })
   
   output$oncoplot_g2 <- renderPlot({
-    group_selected <- "group2"
-    group_selected <- paste0(group_selected, "_maf")
-    oncoplot(maf = filtered_data[[group_selected]], top = 10)
+    cohort_selected <- "cohort2"
+    cohort_selected <- paste0(cohort_selected, "_maf")
+    oncoplot(maf = filtered_data[[cohort_selected]], top = 10)
   })
   
   # Draw lollipop plot based on gene search
   output$lollipopPlot_g1 <- renderPlot({
     req(input$gene_search_lollipop_g1)
-    group_selected <- "group1"
-    group_selected <- paste0(group_selected, "_maf")
+    cohort_selected <- "cohort1"
+    cohort_selected <- paste0(cohort_selected, "_maf")
     
     if (input$gene_search_lollipop_g1 != "") {
-      lollipopPlot(maf = filtered_data[[group_selected]], AACol = "HGVSp", gene = input$gene_search_lollipop_g1)
+      lollipopPlot(maf = filtered_data[[cohort_selected]], AACol = "HGVSp", gene = input$gene_search_lollipop_g1)
     }
   })
   output$lollipopPlot_g2 <- renderPlot({
     req(input$gene_search_lollipop_g2)
-    group_selected <- "group2"
-    group_selected <- paste0(group_selected, "_maf")
+    cohort_selected <- "cohort2"
+    cohort_selected <- paste0(cohort_selected, "_maf")
     
     if (input$gene_search_lollipop_g2 != "") {
-      lollipopPlot(maf = filtered_data[[group_selected]], AACol = "HGVSp", gene = input$gene_search_lollipop_g2)
+      lollipopPlot(maf = filtered_data[[cohort_selected]], AACol = "HGVSp", gene = input$gene_search_lollipop_g2)
     }
   })
   
@@ -487,66 +482,66 @@ shinyServer(function(input, output, session) {
   
   # # Draw Variant allele frequency plot
   # output$vafPlot <- renderPlot({
-  #   group_selected <- filtered_data$group_selected
-  #   group_selected <- paste0(group_selected, "_maf")
-  #   plotVaf(maf = filtered_data[[group_selected]], vafCol = 'i_TumorVAF_WU')
+  #   cohort_selected <- filtered_data$cohort_selected
+  #   cohort_selected <- paste0(cohort_selected, "_maf")
+  #   plotVaf(maf = filtered_data[[cohort_selected]], vafCol = 'i_TumorVAF_WU')
   # })
   
   # Draw somatic interaction plot
   output$interactionPlot_g1 <- renderPlot({
-    group_selected <- "group1_maf"
+    cohort_selected <- "cohort1_maf"
     genes_g1 <- input$gene_search_inter_g1
     
     if (is.null(genes_g1)) {
-      somaticInteractions(maf = filtered_data[[group_selected]], top = 25, pvalue = c(0.05, 0.1))
+      somaticInteractions(maf = filtered_data[[cohort_selected]], top = 25, pvalue = c(0.05, 0.1))
     }
     
     if (length(genes_g1) >= 1 && length(genes_g1) <= 4) {
-      gene_summary <- getGeneSummary(filtered_data[[group_selected]])
+      gene_summary <- getGeneSummary(filtered_data[[cohort_selected]])
       gene_summary <- gene_summary[order(-gene_summary$MutatedSamples), ]
       
       num_gene_need <- 5 - length(genes_g1)
       top_genes <- head(gene_summary$Hugo_Symbol, 5)
       tmp_genes <- head(setdiff(top_genes, genes_g1), num_gene_need)
       
-      somaticInteractions(maf = filtered_data[[group_selected]], genes = c(genes_g1, tmp_genes) , pvalue = c(0.05, 0.1))
+      somaticInteractions(maf = filtered_data[[cohort_selected]], genes = c(genes_g1, tmp_genes) , pvalue = c(0.05, 0.1))
     }
     
     if (length(genes_g1) >= 5) {
-      somaticInteractions(maf = filtered_data[[group_selected]], genes = genes_g1, pvalue = c(0.05, 0.1))
+      somaticInteractions(maf = filtered_data[[cohort_selected]], genes = genes_g1, pvalue = c(0.05, 0.1))
     }
     
   })
   output$interactionPlot_g2 <- renderPlot({
-    group_selected <- "group2_maf"
+    cohort_selected <- "cohort2_maf"
     genes_g2 <- input$gene_search_inter_g2
     
     if (is.null(genes_g2)) {
-      somaticInteractions(maf = filtered_data[[group_selected]], top = 25, pvalue = c(0.05, 0.1))
+      somaticInteractions(maf = filtered_data[[cohort_selected]], top = 25, pvalue = c(0.05, 0.1))
     }
     
     if (length(genes_g2) >= 1 && length(genes_g2) <= 4) {
-      gene_summary <- getGeneSummary(filtered_data[[group_selected]])
+      gene_summary <- getGeneSummary(filtered_data[[cohort_selected]])
       gene_summary <- gene_summary[order(-gene_summary$MutatedSamples), ]
       
       num_gene_need <- 5 - length(genes_g2)
       top_genes <- head(gene_summary$Hugo_Symbol, 5)
       tmp_genes <- head(setdiff(top_genes, genes_g2), num_gene_need)
       
-      somaticInteractions(maf = filtered_data[[group_selected]], genes = c(genes_g2, tmp_genes) , pvalue = c(0.05, 0.1))
+      somaticInteractions(maf = filtered_data[[cohort_selected]], genes = c(genes_g2, tmp_genes) , pvalue = c(0.05, 0.1))
     }
     
     if (length(genes_g2) >= 5) {
-      somaticInteractions(maf = filtered_data[[group_selected]], genes = genes_g2, pvalue = c(0.05, 0.1))
+      somaticInteractions(maf = filtered_data[[cohort_selected]], genes = genes_g2, pvalue = c(0.05, 0.1))
     }
   })
   
   # MAF Comparison
   output$mafCompForestPlot <- renderPlot({
-    req(length(unique(filtered_data$combined$group)) == 2)
+    req(length(unique(filtered_data$combined$cohort)) == 2)
     
-    g1.vs.g2 <- mafCompare(m1 = filtered_data$group1_maf, m2 = filtered_data$group2_maf,
-                           m1Name = 'Group 1', m2Name = 'Group 2', minMut = 5)
+    g1.vs.g2 <- mafCompare(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
+                           m1Name = 'Cohort 1', m2Name = 'Cohort 2', minMut = 5)
     g1.vs.g2$results <- g1.vs.g2$results[1:10]
     forestPlot(mafCompareRes = g1.vs.g2, pVal = 0.05)
   })
@@ -555,8 +550,8 @@ shinyServer(function(input, output, session) {
     req(input$gene_search_maf)
     genes <- input$gene_search_maf
     if (length(genes) > 0) {
-      coOncoplot(m1 = filtered_data$group1_maf, m2 = filtered_data$group2_maf,
-                 m1Name = 'Group 1', m2Name = 'Group 2', genes = genes, removeNonMutated = TRUE)
+      coOncoplot(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
+                 m1Name = 'Cohort 1', m2Name = 'Cohort 2', genes = genes, removeNonMutated = TRUE)
     }
   })
   
@@ -564,8 +559,8 @@ shinyServer(function(input, output, session) {
     req(input$gene_search_maf)
     genes <- input$gene_search_maf
     if (length(genes) > 0) {
-      coBarplot(m1 = filtered_data$group1_maf, m2 = filtered_data$group2_maf,
-                m1Name = 'Group 1', m2Name = 'Group 2', genes = genes)
+      coBarplot(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
+                m1Name = 'Cohort 1', m2Name = 'Cohort 2', genes = genes)
     }
   })
   
@@ -591,10 +586,10 @@ shinyServer(function(input, output, session) {
   })
   
   # Quantile table
-  output$quantile_table_group1 <- renderDT({
+  output$quantile_table_cohort1 <- renderDT({
     req(input$gene_search_bulk_distr)
-    group_selected <- "group1"
-    clinical_selected <- filtered_data[[group_selected]]
+    cohort_selected <- "cohort1"
+    clinical_selected <- filtered_data[[cohort_selected]]
     selected_bulkseq_tpm <- bulkseq_tpm[,colnames(bulkseq_tpm) %in% clinical_selected$Tumor_Sample_Barcode]
     gene_interested <- input$gene_search_bulk_distr
     
@@ -603,10 +598,10 @@ shinyServer(function(input, output, session) {
     datatable(distr_table, options = list(pageLength = 10, autoWidth = TRUE))
   })
   
-  output$quantile_table_group2 <- renderDT({
+  output$quantile_table_cohort2 <- renderDT({
     req(input$gene_search_bulk_distr)
-    group_selected <- "group2"
-    clinical_selected <- filtered_data[[group_selected]]
+    cohort_selected <- "cohort2"
+    clinical_selected <- filtered_data[[cohort_selected]]
     selected_bulkseq_tpm <- bulkseq_tpm[,colnames(bulkseq_tpm) %in% clinical_selected$Tumor_Sample_Barcode]
     gene_interested <- input$gene_search_bulk_distr
     
@@ -617,35 +612,35 @@ shinyServer(function(input, output, session) {
   
   # Survival curve for TPM quantile and mean
   output$tpm_survCompPlot_g1<- renderPlot({
-    req(input$gene_search_bulk_distr, input$grouping_method_tpm_g1)
-    group_selected <- "group1"
-    grouping_method <- input$grouping_method_tpm_g1
+    req(input$gene_search_bulk_distr, input$cohorting_method_tpm_g1)
+    cohort_selected <- "cohort1"
+    cohorting_method <- input$cohorting_method_tpm_g1
     gene_interested <- input$gene_search_bulk_distr
-    selected_clinical <- filtered_data[[group_selected]]
+    selected_clinical <- filtered_data[[cohort_selected]]
     selected_bulkseq_tpm <- bulkseq_tpm[,colnames(bulkseq_tpm) %in% selected_clinical$Tumor_Sample_Barcode]
     selected_clinical <- selected_clinical[selected_clinical$Tumor_Sample_Barcode %in% colnames(selected_bulkseq_tpm),]
     gene_tpm <- selected_bulkseq_tpm[gene_interested, ]
     
-    tpm_distr_survival(gene_tpm, selected_clinical, grouping_method)
+    tpm_distr_survival(gene_tpm, selected_clinical, cohorting_method)
   })
   output$tpm_survCompPlot_g2<- renderPlot({
-    req(input$gene_search_bulk_distr, input$grouping_method_tpm_g2)
-    group_selected <- "group2"
-    grouping_method <- input$grouping_method_tpm_g2
+    req(input$gene_search_bulk_distr, input$cohorting_method_tpm_g2)
+    cohort_selected <- "cohort2"
+    cohorting_method <- input$cohorting_method_tpm_g2
     gene_interested <- input$gene_search_bulk_distr
-    selected_clinical <- filtered_data[[group_selected]]
+    selected_clinical <- filtered_data[[cohort_selected]]
     selected_bulkseq_tpm <- bulkseq_tpm[,colnames(bulkseq_tpm) %in% selected_clinical$Tumor_Sample_Barcode]
     selected_clinical <- selected_clinical[selected_clinical$Tumor_Sample_Barcode %in% colnames(selected_bulkseq_tpm),]
     gene_tpm <- selected_bulkseq_tpm[gene_interested, ]
     
-    tpm_distr_survival(gene_tpm, selected_clinical, grouping_method)
+    tpm_distr_survival(gene_tpm, selected_clinical, cohorting_method)
   })
   
   # BulkRNA-seq DESeq2 and Heatmap ----------
   # # Heatmap for selected genes in bulkRNAseq
   # output$bulkHeat <- renderPlot({
   #   req(input$gene_search_bulk_heat)
-  #   # filtered_data$combined has already been sorted by "group" (selected, unselected)
+  #   # filtered_data$combined has already been sorted by "cohort" (selected, unselected)
   #   clinical_sorted <- filtered_data$combined[filtered_data$combined$Tumor_Sample_Barcode %in% colnames(bulkseq_tpm),]
   #   
   #   genes <- input$gene_search_bulk_heat
@@ -660,7 +655,7 @@ shinyServer(function(input, output, session) {
   #   gene_expression_percentage <- rowMeans(checkpoint_data > 0) * 100
   #   rownames(checkpoint_data_log) <- paste0(genes, " (", round(gene_expression_percentage, 2), "%)")
   #   
-  #   annotation_col <- data.frame(Group = clinical_sorted$group)
+  #   annotation_col <- data.frame(Cohort = clinical_sorted$cohort)
   #   row.names(annotation_col) <- clinical_sorted$Tumor_Sample_Barcode
   # 
   #   # Plot the heatmap
@@ -669,7 +664,7 @@ shinyServer(function(input, output, session) {
   #            color = colorRampPalette(c("blue", "white", "red"))(50),
   #            main = "Gene Expression Heatmap",
   #            show_colnames = FALSE,
-  #            # cluster_cols = FALSE, # set to TRUE If we want to order by "group"
+  #            # cluster_cols = FALSE, # set to TRUE If we want to order by "cohort"
   #            annotation_col = annotation_col)
   # })
   # Reactive value to hold DESeq2 results
@@ -736,7 +731,7 @@ shinyServer(function(input, output, session) {
     plot_data <- results$long_data %>%
       filter(GeneSet %in% input$selected_gene_sets)
     
-    p <- ggplot(plot_data, aes(x = Group, y = EnrichmentScore, fill = Group)) +
+    p <- ggplot(plot_data, aes(x = Cohort, y = EnrichmentScore, fill = Cohort)) +
       geom_violin(trim = FALSE) +
       geom_boxplot(width = 0.1, outlier.shape = NA) +
       facet_wrap(~GeneSet, scales = "free_y") +
@@ -770,36 +765,25 @@ shinyServer(function(input, output, session) {
   output$sc_celltype_boxplot <- renderPlot({
     preprocessed_sc_meta <- preprocessed_sc_meta()
     clinical_combined <- preprocessed_sc_meta$clinical_combined
-    group_info <- preprocessed_sc_meta$group_info
-    celltype_boxplot(group_info, sc_meta)
+    cohort_info <- preprocessed_sc_meta$cohort_info
+    celltype_boxplot(cohort_info, sc_meta)
   })
   
   output$sc_celltype_proportion <- renderPlot({
     preprocessed_sc_meta <- preprocessed_sc_meta()
     clinical_combined <- preprocessed_sc_meta$clinical_combined
-    group_info <- preprocessed_sc_meta$group_info
+    cohort_info <- preprocessed_sc_meta$cohort_info
     
-    celltype_proportion(group_info, sc_meta)
+    celltype_proportion(cohort_info, sc_meta)
   })
   
   output$sc_cellcycle_hist <- renderPlot({
     preprocessed_sc_meta <- preprocessed_sc_meta()
     clinical_combined <- preprocessed_sc_meta$clinical_combined
-    group_info <- preprocessed_sc_meta$group_info
+    cohort_info <- preprocessed_sc_meta$cohort_info
     celltypes_interested <- input$celltypes_interested
     
-    cell_cycle_hist(group_info, sc_meta, celltypes_interested)
-  })
-  
-  # Feature Distribution Analysis
-  output$feature_distribution_plot <- renderPlot({
-    req(input$feature_x, input$feature_y)
-    
-    create_distribution_stacked_barplot(
-      data = clinical_data,
-      x_feature = input$feature_x,
-      y_features = input$feature_y
-    )
+    cell_cycle_hist(cohort_info, sc_meta, celltypes_interested)
   })
   
 })

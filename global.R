@@ -34,13 +34,13 @@ clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 
 # Helper functions -----------
-subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, group, logic) {
+subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, cohort, logic) {
   if (is.null(include_genes)) return(clinical_data)
   maf_data_table <- maf_data@data
   
   if (logic == "Or") {
     matched <- maf_data_table[Hugo_Symbol %in% include_genes, unique(Tumor_Sample_Barcode)]
-    clinical_data <- if (group == "group1") {
+    clinical_data <- if (cohort == "cohort1") {
       clinical_data[clinical_data$Tumor_Sample_Barcode %in% matched,]
     } else {
       clinical_data[!clinical_data$Tumor_Sample_Barcode %in% matched,]
@@ -52,13 +52,13 @@ subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, group,
       filter(Hugo_Symbol %in% include_genes) %>%
       distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>%
       group_by(Tumor_Sample_Barcode) %>%
-      summarise(gene_count = n(), .groups = "drop")
+      summarise(gene_count = n(), .cohorts = "drop")
     
     matched <- sample_gene_count %>%
       filter(gene_count == length(include_genes)) %>%
       pull(Tumor_Sample_Barcode)
     
-    clinical_data <- if (group == "group1") {
+    clinical_data <- if (cohort == "cohort1") {
       clinical_data[clinical_data$Tumor_Sample_Barcode %in% matched,]
     } else {
       clinical_data[!clinical_data$Tumor_Sample_Barcode %in% matched,]
@@ -68,24 +68,37 @@ subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, group,
   return(clinical_data)
 }
 
-filter_by_gene_expression <- function(clinical_data, gene=NULL, threshold=NULL, group) {
-  if (is.null(gene) || is.na(threshold)) return(clinical_data)
+filter_by_gene_expression <- function(clinical_data, gene = NULL, threshold = NULL, cohort, threshold_type = "value") {
+  if (is.null(gene) || is.null(threshold) || is.na(threshold)) return(clinical_data)
+  if (!gene %in% rownames(bulkseq_tpm)) return(clinical_data)
   
-  if (gene %in% unique(rownames(bulkseq_tpm)) && (group == "group1")) {
-    patient_ids <- colnames(bulkseq_tpm[, bulkseq_tpm[gene, ] >= threshold, drop = FALSE])
-    clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% patient_ids, ]
+  gene_expr <- bulkseq_tpm[gene, ]  # Expression vector
+  names(gene_expr) <- colnames(bulkseq_tpm)
+  
+  # Calculate threshold based on type
+  if (threshold_type == "percentile") {
+    cutoff <- quantile(gene_expr, probs = threshold / 100, na.rm = TRUE)
+  } else {
+    cutoff <- threshold
   }
   
-  if (gene %in% unique(rownames(bulkseq_tpm)) && (group == "group2")) {
-    patient_ids <- colnames(bulkseq_tpm[, bulkseq_tpm[gene, ] < threshold, drop = FALSE])
-    clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% patient_ids, ]
+  # Apply filter based on cohort
+  if (cohort == "cohort1") {
+    keep_ids <- names(gene_expr)[gene_expr >= cutoff]
+  } else if (cohort == "cohort2") {
+    keep_ids <- names(gene_expr)[gene_expr < cutoff]
+  } else {
+    return(clinical_data)
   }
   
+  # Subset clinical data
+  clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% keep_ids, ]
   return(clinical_data)
 }
 
 
-filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshold_value, group) {
+
+filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshold_value, cohort) {
   if (!(surv_var %in% colnames(clinical_data))) return(clinical_data)
   
   surv_data <- clinical_data[[surv_var]]
@@ -96,9 +109,9 @@ filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshol
     threshold <- threshold_value
   }
   
-  if (group == "group1") {
+  if (cohort == "cohort1") {
     filtered <- clinical_data[surv_data >= threshold, ]
-  } else if (group == "group2") {
+  } else if (cohort == "cohort2") {
     filtered <- clinical_data[surv_data < threshold, ]
   } else {
     filtered <- clinical_data
@@ -126,49 +139,49 @@ create_picker_input <- function(inputId, label, choices) {
   )
 }
 
-create_group_filters_ui <- function(group_id, category) {
+create_cohort_filters_ui <- function(cohort_id, category) {
   tagList(
-    div(id = paste0(group_id, "_", category, "_filters"),
+    div(id = paste0(cohort_id, "_", category, "_filters"),
         if (category == "clinical") {
           return(list(
             # Demographics
-            create_picker_input(paste0("sex_filter_", group_id), "Sex", sort(unique(clinical_data$Sex))),
-            create_picker_input(paste0("race_filter_", group_id), "Race", sort(unique(clinical_data$Race))),
-            uiOutput(paste0("age_filter_", group_id)),
+            create_picker_input(paste0("sex_filter_", cohort_id), "Sex", sort(unique(clinical_data$Sex))),
+            create_picker_input(paste0("race_filter_", cohort_id), "Race", sort(unique(clinical_data$Race))),
+            uiOutput(paste0("age_filter_", cohort_id)),
             
             # Clinical classification
-            create_picker_input(paste0("stage_filter_", group_id), "ISS Stage", sort(unique(clinical_data$ISS))),
-            create_picker_input(paste0("risk_filter_", group_id), "IMWG Risk Classification", sort(unique(clinical_data$IMWG_Risk_Class))),
-            create_picker_input(paste0("cyto_risk_filter_", group_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$Skerget_Cytogenetic_High_Risk))),
+            create_picker_input(paste0("stage_filter_", cohort_id), "ISS Stage", sort(unique(clinical_data$ISS))),
+            create_picker_input(paste0("risk_filter_", cohort_id), "IMWG Risk Classification", sort(unique(clinical_data$IMWG_Risk_Class))),
+            create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$Skerget_Cytogenetic_High_Risk))),
             
             # Subtypes
-            create_picker_input(paste0("rna_subtype_filter_", group_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_RNA_Subtype_Name))),
-            create_picker_input(paste0("cna_subtype_filter_", group_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_CNA_Subtype_Name))),
+            create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_RNA_Subtype_Name))),
+            create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_CNA_Subtype_Name))),
             
             # Treatment
-            create_picker_input(paste0("triplet_filter_", group_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First))),
-            create_picker_input(paste0("asct_filter_", group_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First)))
+            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First))),
+            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First)))
           ))
         } else if (category == "molecular") {
           return(list(
             # Chromosomal abnormalities
-            create_picker_input(paste0("chr_1q21_gain_filter_", group_id), "1q21 Gain", sort(unique(clinical_data$chr_1q21_gain))),
-            create_picker_input(paste0("chr_1q21_amp_filter_", group_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
-            create_picker_input(paste0("chr_13q14_del_filter_", group_id), "13q14 Deletion", sort(unique(clinical_data$chr_13q14_del))),
-            create_picker_input(paste0("chr_13q34_del_filter_", group_id), "13q34 Deletion", sort(unique(clinical_data$chr_13q34_del))),
-            create_picker_input(paste0("chr_17p13_del_filter_", group_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
-            create_picker_input(paste0("diploidy_filter_", group_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
-            create_picker_input(paste0("chromothripsis_filter_", group_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
+            create_picker_input(paste0("chr_1q21_gain_filter_", cohort_id), "1q21 Gain", sort(unique(clinical_data$chr_1q21_gain))),
+            create_picker_input(paste0("chr_1q21_amp_filter_", cohort_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
+            create_picker_input(paste0("chr_13q14_del_filter_", cohort_id), "13q14 Deletion", sort(unique(clinical_data$chr_13q14_del))),
+            create_picker_input(paste0("chr_13q34_del_filter_", cohort_id), "13q34 Deletion", sort(unique(clinical_data$chr_13q34_del))),
+            create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
+            create_picker_input(paste0("diploidy_filter_", cohort_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
+            create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
             
             # Translocations
-            create_picker_input(paste0("t_11_14_filter_", group_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
-            create_picker_input(paste0("t_4_14_filter_", group_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
+            create_picker_input(paste0("t_11_14_filter_", cohort_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
+            create_picker_input(paste0("t_4_14_filter_", cohort_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
             
             # Mutational markers
-            create_picker_input(paste0("maf_filter_", group_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
-            create_picker_input(paste0("apobec_filter_", group_id), "APOBEC", sort(unique(clinical_data$APOBEC))),
-            create_picker_input(paste0("tp53_filter_", group_id), "TP53 Functional Copies", sort(unique(clinical_data$TP53_Funct_Copies))),
-            create_picker_input(paste0("tp53_ns_filter_", group_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$TP53_NS_Mut_Count)))
+            create_picker_input(paste0("maf_filter_", cohort_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
+            create_picker_input(paste0("apobec_filter_", cohort_id), "APOBEC", sort(unique(clinical_data$APOBEC))),
+            create_picker_input(paste0("tp53_filter_", cohort_id), "TP53 Functional Copies", sort(unique(clinical_data$TP53_Funct_Copies))),
+            create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$TP53_NS_Mut_Count)))
           ))
         }
     )
@@ -176,46 +189,46 @@ create_group_filters_ui <- function(group_id, category) {
 }
 
 
-get_group_filters <- function(input, group_id, category) {
+get_cohort_filters <- function(input, cohort_id, category) {
   if (category == "clinical") {
     return(list(
-      sex = input[[paste0("sex_filter_", group_id)]],
-      race = input[[paste0("race_filter_", group_id)]],
-      age = input[[paste0("age_", group_id)]],
+      sex = input[[paste0("sex_filter_", cohort_id)]],
+      race = input[[paste0("race_filter_", cohort_id)]],
+      age = input[[paste0("age_", cohort_id)]],
       
-      stage = input[[paste0("stage_filter_", group_id)]],
-      risk = input[[paste0("risk_filter_", group_id)]],
-      cyto_risk = input[[paste0("cyto_risk_filter_", group_id)]],
+      stage = input[[paste0("stage_filter_", cohort_id)]],
+      risk = input[[paste0("risk_filter_", cohort_id)]],
+      cyto_risk = input[[paste0("cyto_risk_filter_", cohort_id)]],
       
-      rna_subtype = input[[paste0("rna_subtype_filter_", group_id)]],
-      cna_subtype = input[[paste0("cna_subtype_filter_", group_id)]],
+      rna_subtype = input[[paste0("rna_subtype_filter_", cohort_id)]],
+      cna_subtype = input[[paste0("cna_subtype_filter_", cohort_id)]],
       
-      triplet = input[[paste0("triplet_filter_", group_id)]],
-      asct = input[[paste0("asct_filter_", group_id)]]
+      triplet = input[[paste0("triplet_filter_", cohort_id)]],
+      asct = input[[paste0("asct_filter_", cohort_id)]]
     ))
   } else if (category == "molecular") {
     return(list(
-      q21_gain = input[[paste0("chr_1q21_gain_filter_", group_id)]],
-      q21_amp = input[[paste0("chr_1q21_amp_filter_", group_id)]],
-      del13q14 = input[[paste0("chr_13q14_del_filter_", group_id)]],
-      del13q34 = input[[paste0("chr_13q34_del_filter_", group_id)]],
-      del17p13 = input[[paste0("chr_17p13_del_filter_", group_id)]],
+      q21_gain = input[[paste0("chr_1q21_gain_filter_", cohort_id)]],
+      q21_amp = input[[paste0("chr_1q21_amp_filter_", cohort_id)]],
+      del13q14 = input[[paste0("chr_13q14_del_filter_", cohort_id)]],
+      del13q34 = input[[paste0("chr_13q34_del_filter_", cohort_id)]],
+      del17p13 = input[[paste0("chr_17p13_del_filter_", cohort_id)]],
       
-      diploidy = input[[paste0("diploidy_filter_", group_id)]],
-      chromothripsis = input[[paste0("chromothripsis_filter_", group_id)]],
+      diploidy = input[[paste0("diploidy_filter_", cohort_id)]],
+      chromothripsis = input[[paste0("chromothripsis_filter_", cohort_id)]],
       
-      t11_14 = input[[paste0("t_11_14_filter_", group_id)]],
-      t4_14 = input[[paste0("t_4_14_filter_", group_id)]],
+      t11_14 = input[[paste0("t_11_14_filter_", cohort_id)]],
+      t4_14 = input[[paste0("t_4_14_filter_", cohort_id)]],
       
-      maf = input[[paste0("maf_filter_", group_id)]],
-      apobec = input[[paste0("apobec_filter_", group_id)]],
-      tp53 = input[[paste0("tp53_filter_", group_id)]],
-      tp53_ns = input[[paste0("tp53_ns_filter_", group_id)]]
+      maf = input[[paste0("maf_filter_", cohort_id)]],
+      apobec = input[[paste0("apobec_filter_", cohort_id)]],
+      tp53 = input[[paste0("tp53_filter_", cohort_id)]],
+      tp53_ns = input[[paste0("tp53_ns_filter_", cohort_id)]]
     ))
   }
 }
 
-filter_group_data <- function(data, filters) {
+filter_cohort_data <- function(data, filters) {
   data <- as_tibble(data) # Ensures compatibility with dplyr functions
   
   data <- data %>%
@@ -332,19 +345,19 @@ filter_group_data <- function(data, filters) {
   return(data)
 }
 
-# Determine selected group
-get_group_selected <- function(filtered_data, group_selected) {
-  if (group_selected == "group1") {
-    return(filtered_data$group1)
+# Determine selected cohort
+get_cohort_selected <- function(filtered_data, cohort_selected) {
+  if (cohort_selected == "cohort1") {
+    return(filtered_data$cohort1)
   } else {
-    return(filtered_data$group2)
+    return(filtered_data$cohort2)
   }
 }
 
 # Summary of clinical data
-generate_summary_plot <- function(group_selected, filtered_data) {
-  selected_data <- filtered_data[[group_selected]]
-  features <- c("Race", "Sex", "Age_range", "ISS", "ASCT_First")
+generate_summary_plot <- function(cohort_selected, filtered_data) {
+  selected_data <- filtered_data[[cohort_selected]]
+  features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class", "ASCT_First", "Triplet_First")
   
   unique_values_counts_list <- lapply(features, function(feature) {
     data.frame(Value = names(table(selected_data[[feature]])),
@@ -353,6 +366,8 @@ generate_summary_plot <- function(group_selected, filtered_data) {
   })
   
   unique_values_counts_df <- do.call(rbind, unique_values_counts_list)
+  # Ensure Feature is a factor with specified order
+  unique_values_counts_df$Feature <- factor(unique_values_counts_df$Feature, levels = features)
   
   ggplot(unique_values_counts_df, aes(x = Value, y = Count, fill = Feature)) +
     geom_bar(stat = "identity", position = position_dodge()) +
@@ -367,21 +382,21 @@ generate_summary_plot <- function(group_selected, filtered_data) {
 
 create_categorical_plot <- function(data, feature, feature_label) {
   plot_data <- data %>%
-    group_by(group, !!sym(feature)) %>%
-    summarise(n = n(), .groups = "drop") %>%
-    group_by(group) %>%
+    group_by(cohort, !!sym(feature)) %>%
+    summarise(n = n(), .cohorts = "drop") %>%
+    group_by(cohort) %>%
     mutate(
       percentage = n / sum(n) * 100,
-      label = paste0("Group: ", group,
+      label = paste0("Cohort: ", cohort,
                      "<br>", feature_label, ": ", !!sym(feature),
                      "<br>Percentage: ", sprintf("%.2f", percentage), "%")
     )
   
-  ggplot(plot_data, aes_string(x = feature, y = "percentage", fill = "group", alpha = "group", text = "label")) +
+  ggplot(plot_data, aes_string(x = feature, y = "percentage", fill = "cohort", alpha = "cohort", text = "label")) +
     geom_bar(stat = "identity", position = "dodge") +
     labs(x = feature_label, y = "Percentage") +
-    scale_alpha_manual(values = c(Group1 = 0.9, Group2 = 0.9)) +
-    scale_fill_manual(values = c(Group1 = "#E87D72", Group2 = "#5BAEB0")) +
+    scale_alpha_manual(values = c(Cohort1 = 0.9, Cohort2 = 0.9)) +
+    scale_fill_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
@@ -393,13 +408,13 @@ create_categorical_plot <- function(data, feature, feature_label) {
 #' @return ggplot object
 create_continuous_plot <- function(data, feature, feature_label) {
   data <- data %>%
-    mutate(label = paste0("Group: ", group,
+    mutate(label = paste0("Cohort: ", cohort,
                           "<br>", feature_label, ": ", sprintf("%.2f", !!sym(feature))))
   
-  ggplot(data, aes_string(x = "group", y = feature, fill = "group", text = "label")) +
+  ggplot(data, aes_string(x = "cohort", y = feature, fill = "cohort", text = "label")) +
     geom_boxplot(outlier.alpha = 0.4) +
-    labs(x = "Group", y = feature_label) +
-    scale_fill_manual(values = c(Group1 = "#E87D72", Group2 = "#5BAEB0")) +
+    labs(x = "Cohort", y = feature_label) +
+    scale_fill_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
     theme_minimal()
 }
 
@@ -427,31 +442,31 @@ create_distribution_plot <- function(data, feature, feature_label, continuous_fe
 # =============================================================================
 
 #' Perform statistical test for continuous variables
-#' @param group1_vals Vector of values for group 1
-#' @param group2_vals Vector of values for group 2
+#' @param cohort1_vals Vector of values for cohort 1
+#' @param cohort2_vals Vector of values for cohort 2
 #' @return List with test results
-test_continuous_variable <- function(group1_vals, group2_vals) {
+test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   # Remove NA values
-  group1_vals <- group1_vals[!is.na(group1_vals)]
-  group2_vals <- group2_vals[!is.na(group2_vals)]
+  cohort1_vals <- cohort1_vals[!is.na(cohort1_vals)]
+  cohort2_vals <- cohort2_vals[!is.na(cohort2_vals)]
   
-  if (length(group1_vals) <= 2 || length(group2_vals) <= 2) {
+  if (length(cohort1_vals) <= 2 || length(cohort2_vals) <= 2) {
     return(list(
       test_name = "Insufficient data",
       statistic = "NA",
       p_value = NA,
-      group1_summary = "Insufficient data",
-      group2_summary = "Insufficient data"
+      cohort1_summary = "Insufficient data",
+      cohort2_summary = "Insufficient data"
     ))
   }
   
   # Check normality
-  normal1 <- tryCatch(shapiro.test(group1_vals)$p.value > 0.05, error = function(e) FALSE)
-  normal2 <- tryCatch(shapiro.test(group2_vals)$p.value > 0.05, error = function(e) FALSE)
+  normal1 <- tryCatch(shapiro.test(cohort1_vals)$p.value > 0.05, error = function(e) FALSE)
+  normal2 <- tryCatch(shapiro.test(cohort2_vals)$p.value > 0.05, error = function(e) FALSE)
   
-  if (normal1 && normal2 && length(group1_vals) >= 3 && length(group2_vals) >= 3) {
+  if (normal1 && normal2 && length(cohort1_vals) >= 3 && length(cohort2_vals) >= 3) {
     # Use t-test
-    test_result <- tryCatch(t.test(group1_vals, group2_vals), error = function(e) NULL)
+    test_result <- tryCatch(t.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
     test_name <- "t-test"
     if (!is.null(test_result)) {
       statistic <- paste0("t = ", round(test_result$statistic, 3))
@@ -462,7 +477,7 @@ test_continuous_variable <- function(group1_vals, group2_vals) {
     }
   } else {
     # Use Mann-Whitney U test
-    test_result <- tryCatch(wilcox.test(group1_vals, group2_vals), error = function(e) NULL)
+    test_result <- tryCatch(wilcox.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
     test_name <- "Mann-Whitney U"
     if (!is.null(test_result)) {
       statistic <- paste0("W = ", round(test_result$statistic, 3))
@@ -474,17 +489,17 @@ test_continuous_variable <- function(group1_vals, group2_vals) {
   }
   
   # Summary statistics
-  group1_summary <- paste0("Mean: ", round(mean(group1_vals, na.rm = TRUE), 2),
-                           " (SD: ", round(sd(group1_vals, na.rm = TRUE), 2), ")")
-  group2_summary <- paste0("Mean: ", round(mean(group2_vals, na.rm = TRUE), 2),
-                           " (SD: ", round(sd(group2_vals, na.rm = TRUE), 2), ")")
+  cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals, na.rm = TRUE), 2),
+                           " (SD: ", round(sd(cohort1_vals, na.rm = TRUE), 2), ")")
+  cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals, na.rm = TRUE), 2),
+                           " (SD: ", round(sd(cohort2_vals, na.rm = TRUE), 2), ")")
   
   return(list(
     test_name = test_name,
     statistic = statistic,
     p_value = p_value,
-    group1_summary = group1_summary,
-    group2_summary = group2_summary
+    cohort1_summary = cohort1_summary,
+    cohort2_summary = cohort2_summary
   ))
 }
 
@@ -493,7 +508,7 @@ test_continuous_variable <- function(group1_vals, group2_vals) {
 #' @param feature The feature name to analyze
 #' @return List with test results
 test_categorical_variable <- function(data, feature) {
-  contingency_table <- tryCatch(table(data$group, data[[feature]], useNA = "no"),
+  contingency_table <- tryCatch(table(data$cohort, data[[feature]], useNA = "no"),
                                 error = function(e) NULL)
   
   if (is.null(contingency_table) || sum(contingency_table) == 0) {
@@ -501,8 +516,8 @@ test_categorical_variable <- function(data, feature) {
       test_name = "Insufficient data",
       statistic = "NA",
       p_value = NA,
-      group1_summary = "Insufficient data",
-      group2_summary = "Insufficient data"
+      cohort1_summary = "Insufficient data",
+      cohort2_summary = "Insufficient data"
     ))
   }
   
@@ -517,8 +532,8 @@ test_categorical_variable <- function(data, feature) {
       test_name = "Low frequency categories",
       statistic = "NA",
       p_value = NA,
-      group1_summary = "Low frequency",
-      group2_summary = "Low frequency"
+      cohort1_summary = "Low frequency",
+      cohort2_summary = "Low frequency"
     ))
   }
   
@@ -564,29 +579,29 @@ test_categorical_variable <- function(data, feature) {
   }
   
   # Summary - proportions
-  if ("Group1" %in% rownames(contingency_table) && "Group2" %in% rownames(contingency_table)) {
-    group1_counts <- contingency_table["Group1", ]
-    group2_counts <- contingency_table["Group2", ]
-    group1_total <- sum(group1_counts)
-    group2_total <- sum(group2_counts)
+  if ("Cohort1" %in% rownames(contingency_table) && "Cohort2" %in% rownames(contingency_table)) {
+    cohort1_counts <- contingency_table["Cohort1", ]
+    cohort2_counts <- contingency_table["Cohort2", ]
+    cohort1_total <- sum(cohort1_counts)
+    cohort2_total <- sum(cohort2_counts)
     
-    group1_summary <- paste(names(group1_counts), 
-                            paste0(group1_counts, " (", round(group1_counts/group1_total*100, 1), "%)"),
+    cohort1_summary <- paste(names(cohort1_counts), 
+                            paste0(cohort1_counts, " (", round(cohort1_counts/cohort1_total*100, 1), "%)"),
                             sep = ": ", collapse = "; ")
-    group2_summary <- paste(names(group2_counts),
-                            paste0(group2_counts, " (", round(group2_counts/group2_total*100, 1), "%)"),
+    cohort2_summary <- paste(names(cohort2_counts),
+                            paste0(cohort2_counts, " (", round(cohort2_counts/cohort2_total*100, 1), "%)"),
                             sep = ": ", collapse = "; ")
   } else {
-    group1_summary <- "Data unavailable"
-    group2_summary <- "Data unavailable"
+    cohort1_summary <- "Data unavailable"
+    cohort2_summary <- "Data unavailable"
   }
   
   return(list(
     test_name = test_name,
     statistic = statistic,
     p_value = p_value,
-    group1_summary = group1_summary,
-    group2_summary = group2_summary
+    cohort1_summary = cohort1_summary,
+    cohort2_summary = cohort2_summary
   ))
 }
 
@@ -632,8 +647,8 @@ create_significance_table <- function(data, clinical_features, continuous_featur
     Test_Used = character(),
     P_Value = numeric(),
     Statistic = character(),
-    Group1_Summary = character(),
-    Group2_Summary = character(),
+    Cohort1_Summary = character(),
+    Cohort2_Summary = character(),
     Significance = character(),
     stringsAsFactors = FALSE
   )
@@ -646,9 +661,9 @@ create_significance_table <- function(data, clinical_features, continuous_featur
     is_continuous <- feature %in% continuous_features
     
     if (is_continuous) {
-      group1_vals <- data[data$group == "Group1", feature]
-      group2_vals <- data[data$group == "Group2", feature]
-      test_results <- test_continuous_variable(group1_vals, group2_vals)
+      cohort1_vals <- data[data$cohort == "Cohort1", feature]
+      cohort2_vals <- data[data$cohort == "Cohort2", feature]
+      test_results <- test_continuous_variable(cohort1_vals, cohort2_vals)
     } else {
       test_results <- test_categorical_variable(data, feature)
     }
@@ -663,8 +678,8 @@ create_significance_table <- function(data, clinical_features, continuous_featur
       Test_Used = test_results$test_name,
       P_Value = test_results$p_value,
       Statistic = test_results$statistic,
-      Group1_Summary = test_results$group1_summary,
-      Group2_Summary = test_results$group2_summary,
+      Cohort1_Summary = test_results$cohort1_summary,
+      Cohort2_Summary = test_results$cohort2_summary,
       Significance = significance,
       stringsAsFactors = FALSE
     ))
@@ -673,7 +688,7 @@ create_significance_table <- function(data, clinical_features, continuous_featur
   # Format p-values for display
   results$P_Value_Display <- sapply(results$P_Value, format_p_value)
   
-  # Create final display table (without group summaries)
+  # Create final display table (without cohort summaries)
   display_table <- results[, c("Feature", "Type", "Test_Used", "P_Value_Display", 
                                "Statistic", "Significance")]
   colnames(display_table) <- c("Clinical Feature", "Type", "Statistical Test", "P-Value", 
@@ -724,7 +739,7 @@ process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) 
   # Create metadata
   metadata <- data.frame(
     row.names = clinical_combined$Tumor_Sample_Barcode,
-    condition = as.factor(clinical_combined$group)
+    condition = as.factor(clinical_combined$cohort)
   )
   
   # Filter genes
@@ -735,7 +750,7 @@ process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) 
   dds <- DESeqDataSetFromMatrix(countData = count_data, colData = metadata, design = ~ condition)
   dds <- dds[rowSums(counts(dds)) > 1, ]
   dds <- DESeq(dds)
-  results <- results(dds, contrast = c("condition", "Group1", "Group2"))
+  results <- results(dds, contrast = c("condition", "Cohort1", "Cohort2"))
   
   results <- as.data.frame(results)
   results$significant <- ifelse(results$padj < 0.05 & results$log2FoldChange > 1.5, "Up-regulated",
@@ -780,17 +795,17 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested) {
     rownames_to_column(var = "Tumor_Sample_Barcode") %>%
     inner_join(clinical_combined, by = "Tumor_Sample_Barcode")
   
-  # Ensure 'group' is a factor
-  merged_data$group <- as.factor(merged_data$group)
+  # Ensure 'cohort' is a factor
+  merged_data$cohort <- as.factor(merged_data$cohort)
   
   # Filter for the gene of interest
   gene_data <- merged_data %>%
-    dplyr::select(Tumor_Sample_Barcode, group, all_of(gene_interested)) %>%
+    dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     rename(TPM = all_of(gene_interested))
   
-  # Calculate median TPM for each group
+  # Calculate median TPM for each cohort
   median_tpm <- gene_data %>%
-    group_by(group) %>%
+    group_by(cohort) %>%
     summarise(median_TPM = median(TPM, na.rm = TRUE))
   
   # Calculate the number of bins using the Freedman-Diaconis rule
@@ -812,16 +827,16 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested) {
   density_data <- p_build$data[[2]]
   
   scale_factor <- max(histogram_data$count) / max(density_data$density)
-  p <- ggplot(gene_data, aes(x = TPM, fill = group, color = group)) +
+  p <- ggplot(gene_data, aes(x = TPM, fill = cohort, color = cohort)) +
     geom_histogram(aes(y = after_stat(count),
                        text = paste("TPM range:", round(after_stat(x) - after_stat(width)/2, 2), "-", round(after_stat(x) + after_stat(width)/2, 2), "<br>Count:", after_stat(count))),
                    position = "identity", bins = num_bins, fill = NA, alpha = 0) +
     geom_density(aes(y = after_stat(density) * scale_factor), alpha = 0.3, adjust = 1.5) +
-    geom_vline(data = median_tpm, aes(xintercept = median_TPM, color = group, text = paste("Median TPM:", round(median_TPM, 2))), linetype = "dashed", linewidth = 1) +
+    geom_vline(data = median_tpm, aes(xintercept = median_TPM, color = cohort, text = paste("Median TPM:", round(median_TPM, 2))), linetype = "dashed", linewidth = 1) +
     labs(x = "TPM",
          y = "Count",
-         fill = "Group",
-         color = "Group") +
+         fill = "Cohort",
+         color = "Cohort") +
     theme_minimal()
   
   return(p)
@@ -836,19 +851,19 @@ tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested) {
     rownames_to_column(var = "Tumor_Sample_Barcode") %>%
     inner_join(clinical_combined, by = "Tumor_Sample_Barcode")
   
-  # Ensure 'group' is a factor
-  merged_data$group <- as.factor(merged_data$group)
+  # Ensure 'cohort' is a factor
+  merged_data$cohort <- as.factor(merged_data$cohort)
   
   # Filter for the gene of interest
   gene_data <- merged_data %>%
-    dplyr::select(Tumor_Sample_Barcode, group, all_of(gene_interested)) %>%
+    dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     rename(TPM = all_of(gene_interested))
   
   # Create the boxplot
-  p <- ggboxplot(gene_data, x = "group", y = "TPM",
-                 color = "group", add = "jitter") +
+  p <- ggboxplot(gene_data, x = "cohort", y = "TPM",
+                 color = "cohort", add = "jitter") +
     stat_compare_means(method = "wilcox.test", label = "p.format", label.y = max(gene_data$TPM) * 1.1) +
-    labs(x = "Group",
+    labs(x = "Cohort",
          y = paste("TPM of", gene_interested))
   
   return(p)
@@ -878,57 +893,57 @@ tpm_distr_table <- function(count_data_tpm, gene_interested) {
   return(quartile_table)
 }
 
-tpm_distr_survival <- function(gene_tpm, selected_clinical, grouping_method) {
+tpm_distr_survival <- function(gene_tpm, selected_clinical, cohorting_method) {
   gene_interested <- rownames(gene_tpm)
   all_samples <- colnames(gene_tpm)
   gene_tpm <- as.numeric(gene_tpm)
   
-  if (grouping_method == "quartiles") {
-    # Group by quartiles
+  if (cohorting_method == "quartiles") {
+    # Cohort by quartiles
     quartiles <- quantile(gene_tpm, probs = c(0, 0.25, 0.5, 0.75, 1))
     
     # Prevent 'breaks' not unique error
     epsilon <- .Machine$double.eps
     quartiles <- quartiles + cumsum(duplicated(quartiles)) * epsilon
     
-    # Create group
-    group <- cut(gene_tpm,
+    # Create cohort
+    cohort <- cut(gene_tpm,
                  breaks = quartiles,
                  labels = c("Q1", "Q2", "Q3", "Q4"),
                  include.lowest = TRUE)
     
-  } else if (grouping_method == "median") {
-    # Group by median
+  } else if (cohorting_method == "median") {
+    # Cohort by median
     median_value <- median(gene_tpm, na.rm = TRUE)
-    group <- ifelse(gene_tpm <= median_value, "Below Median", "Above Median")
+    cohort <- ifelse(gene_tpm <= median_value, "Below Median", "Above Median")
   }
   
-  # Map group to clinical data
-  group_df <- data.frame(Tumor_Sample_Barcode = all_samples,
-                         group = group)
+  # Map cohort to clinical data
+  cohort_df <- data.frame(Tumor_Sample_Barcode = all_samples,
+                         cohort = cohort)
   
-  selected_clinical <- merge(selected_clinical, group_df, by = "Tumor_Sample_Barcode")
+  selected_clinical <- merge(selected_clinical, cohort_df, by = "Tumor_Sample_Barcode")
   
   # Some samples does not have PFS and PFS_event, so the num of samples used in survival curve and selected_clinical is not consistent
   # Num of NAs: PFS, PFS_event; 308, 12. 
   # Survival curves
   surv_object <- Surv(time = selected_clinical$PFS_censored, event = selected_clinical$PFS_event)
-  fit <- do.call(survfit, list(surv_object ~ group, data = selected_clinical))
+  fit <- do.call(survfit, list(surv_object ~ cohort, data = selected_clinical))
   ggsurvplot(fit, data = selected_clinical, pval = TRUE,
              risk.table = TRUE, risk.table.col = "strata",
              ggtheme = theme_minimal(),
              tables.theme = theme_void(),
              xlab = "Days",
              ylab = "Progression-Free Survival",
-             title = paste("Survival Curve by", gene_interested, "Expression by", if (grouping_method == "quartiles") "Quartiles" else "median"))
+             title = paste("Survival Curve by", gene_interested, "Expression by", if (cohorting_method == "quartiles") "Quartiles" else "median"))
 }
 
 compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   # Intersect
   inter_samples <- intersect(colnames(ssgsea_result), clinical_combined$Tumor_Sample_Barcode)
-  clinical_combined <- clinical_combined[clinical_combined$Tumor_Sample_Barcode %in% inter_samples, c("Tumor_Sample_Barcode", "group")]
+  clinical_combined <- clinical_combined[clinical_combined$Tumor_Sample_Barcode %in% inter_samples, c("Tumor_Sample_Barcode", "cohort")]
   
-  req(length(unique(clinical_combined$group)) == 2)
+  req(length(unique(clinical_combined$cohort)) == 2)
   
   ssgsea_result <- ssgsea_result[,inter_samples]
   ssgsea_result <- t(scale(t(ssgsea_result)))
@@ -943,11 +958,11 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   # Transform to long data
   long_data <- pivot_longer(
     merged_data,
-    cols = -c(Tumor_Sample_Barcode, group),
+    cols = -c(Tumor_Sample_Barcode, cohort),
     names_to = "GeneSet",
     values_to = "EnrichmentScore"
   )
-  colnames(long_data)[1:2] <- c("Sample", "Group")
+  colnames(long_data)[1:2] <- c("Sample", "Cohort")
   
   
   unique_gene_sets <- unique(long_data$GeneSet)
@@ -955,7 +970,7 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   
   for (gene_set in unique_gene_sets) {
     subset_data <- filter(long_data, GeneSet == gene_set)
-    wilcox_result <- wilcox.test(EnrichmentScore ~ Group, data = subset_data)
+    wilcox_result <- wilcox.test(EnrichmentScore ~ Cohort, data = subset_data)
     wilcox_results <- rbind(wilcox_results, data.frame(GeneSet = gene_set, p_value = wilcox_result$p.value))
   }
   
@@ -975,10 +990,10 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   wilcox_results$Direction <- ''
   for (gene_set in unique(wilcox_results$GeneSet)) {
     
-    group1_mean <- mean(as.numeric(unlist(long_data[long_data$GeneSet == gene_set & long_data$Group == 'Group1', 'EnrichmentScore'])), na.rm = TRUE)
-    group2_mean <- mean(as.numeric(unlist(long_data[long_data$GeneSet == gene_set & long_data$Group == 'Group2', 'EnrichmentScore'])), na.rm = TRUE)
+    cohort1_mean <- mean(as.numeric(unlist(long_data[long_data$GeneSet == gene_set & long_data$Cohort == 'Cohort1', 'EnrichmentScore'])), na.rm = TRUE)
+    cohort2_mean <- mean(as.numeric(unlist(long_data[long_data$GeneSet == gene_set & long_data$Cohort == 'Cohort2', 'EnrichmentScore'])), na.rm = TRUE)
     
-    if (group1_mean > group2_mean) {
+    if (cohort1_mean > cohort2_mean) {
       direction <- 'Up'
     } else {
       direction <- 'Down'
@@ -1005,7 +1020,7 @@ create_violin_plot <- function(wilcox_results, long_data) {
   
   # Violin plot
   dodge <- position_dodge(width=0.6)
-  p <- ggplot(top_significant_data, aes(x = GeneSet, y = EnrichmentScore, fill = Group)) +
+  p <- ggplot(top_significant_data, aes(x = GeneSet, y = EnrichmentScore, fill = Cohort)) +
     geom_violin(trim = FALSE, width = 0.7, position = dodge) +
     geom_boxplot(width = 0.1, position = dodge) +
     stat_summary(fun = median, geom = "point", size = 2, color = "black", position = dodge) +
@@ -1021,7 +1036,7 @@ create_violin_plot <- function(wilcox_results, long_data) {
   return(p)
 }
 
-celltype_boxplot <- function(group_info, sc_meta) {
+celltype_boxplot <- function(cohort_info, sc_meta) {
   # Calculate cell type abundance for each patient
   sc_meta <- sc_meta[, c("public_id", "celltypes", "barcode")]
   patient_abundance <- sc_meta %>%
@@ -1030,14 +1045,14 @@ celltype_boxplot <- function(group_info, sc_meta) {
     mutate(proportion = count / sum(count))
   
   # Merge patient abundance with clinical data
-  merged_data <- merge(patient_abundance, group_info, by = "public_id")
+  merged_data <- merge(patient_abundance, cohort_info, by = "public_id")
   
-  req(length(unique(merged_data$group)) == 2)
-  # Compare cell type abundance between groups
+  req(length(unique(merged_data$cohort)) == 2)
+  # Compare cell type abundance between cohorts
   comparison_results <- merged_data %>%
     group_by(celltypes) %>%
     summarise(
-      p_value = t.test(proportion ~ group)$p.value
+      p_value = t.test(proportion ~ cohort)$p.value
     ) %>%
     mutate(p_adj = p.adjust(p_value, method = "BH"))
   
@@ -1052,23 +1067,23 @@ celltype_boxplot <- function(group_info, sc_meta) {
   merged_data <- merge(merged_data, comparison_results, by = "celltypes")
   
   # Create the boxplot
-  ggplot(merged_data, aes(x = celltypes, y = proportion, fill = group)) +
+  ggplot(merged_data, aes(x = celltypes, y = proportion, fill = cohort)) +
     geom_boxplot() +
-    labs(title = "Cell Type Abundance by Group",
+    labs(title = "Cell Type Abundance by Cohort",
          x = "Cell Type",
          y = "Proportion",
-         fill = "Group") +
+         fill = "Cohort") +
     theme_minimal() +
     geom_text(aes(x = celltypes, y = max(proportion) + 0.1, label = Significance), size = 5, vjust = 0) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
-celltype_proportion <- function(group_info, sc_meta) {
-  # Calculate cell type abundance by group
+celltype_proportion <- function(cohort_info, sc_meta) {
+  # Calculate cell type abundance by cohort
   sc_meta <- sc_meta[, c("public_id", "celltypes", "barcode")]
-  merged_meta <- merge(sc_meta, group_info, by = "public_id")
+  merged_meta <- merge(sc_meta, cohort_info, by = "public_id")
   cell_proportions <- merged_meta %>%
-    group_by(group, celltypes) %>%
+    group_by(cohort, celltypes) %>%
     summarise(count = n()) %>%
     mutate(proportion = count / sum(count) * 100)
   
@@ -1081,11 +1096,11 @@ celltype_proportion <- function(group_info, sc_meta) {
     "PlasmaCells" = "#e66101", 
     "UNK" = "#b2182b"
   )
-  # Set the order of the group factor levels
-  cell_proportions$group <- factor(cell_proportions$group, levels = c("Group2", "Group1"))
+  # Set the order of the cohort factor levels
+  cell_proportions$cohort <- factor(cell_proportions$cohort, levels = c("Cohort2", "Cohort1"))
   # Reverse the order of factors for correct stacking
   cell_proportions$celltypes <- factor(cell_proportions$celltypes, levels = rev(levels(factor(cell_proportions$celltypes))))
-  ggplot(cell_proportions, aes(y = group, x = proportion, fill = celltypes)) +
+  ggplot(cell_proportions, aes(y = cohort, x = proportion, fill = celltypes)) +
     geom_bar(stat = "identity", color = "black") + # Add border to the bars
     geom_label(aes(label = sprintf("%s\n%.2f%%", celltypes, proportion)),
                position = position_stack(vjust = 0.5, reverse = TRUE), size = 3.5,
@@ -1094,7 +1109,7 @@ celltype_proportion <- function(group_info, sc_meta) {
                color = "black", # Set text color to black for clarity
                fontface = "bold") + 
     scale_fill_manual(values = colors) +
-    labs(title = "Cell Proportions by Group", y = "Group", x = "Percentage (%)") +
+    labs(title = "Cell Proportions by Cohort", y = "Cohort", x = "Percentage (%)") +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, size = 16),
@@ -1105,7 +1120,7 @@ celltype_proportion <- function(group_info, sc_meta) {
     )
 }
 
-cell_cycle_hist <- function(group_info, sc_meta, celltypes) {
+cell_cycle_hist <- function(cohort_info, sc_meta, celltypes) {
   if (!('All' %in% celltypes)) {
     sc_meta <- sc_meta[sc_meta$celltypes %in% celltypes, ]
   }
@@ -1115,23 +1130,23 @@ cell_cycle_hist <- function(group_info, sc_meta, celltypes) {
     return(NULL)
   }
   
-  sc_meta <- merge(sc_meta, group_info, by = "public_id")
+  sc_meta <- merge(sc_meta, cohort_info, by = "public_id")
   
-  phase_group_counts <- table(sc_meta$Phase, sc_meta$group)
-  phase_group_df <- as.data.frame(phase_group_counts)
-  colnames(phase_group_df) <- c("Phase", "Group", "Count")
+  phase_cohort_counts <- table(sc_meta$Phase, sc_meta$cohort)
+  phase_cohort_df <- as.data.frame(phase_cohort_counts)
+  colnames(phase_cohort_df) <- c("Phase", "Cohort", "Count")
   
-  # Calculate the percentage of cells in each phase within each group
-  phase_group_summary <- phase_group_df %>%
-    group_by(Group) %>%
+  # Calculate the percentage of cells in each phase within each cohort
+  phase_cohort_summary <- phase_cohort_df %>%
+    group_by(Cohort) %>%
     mutate(Total = sum(Count),
            Percentage = (Count / Total) * 100)
   
-  # Create the histogram plot by group
-  ggplot(phase_group_summary, aes(x = Phase, y = Percentage, fill = Group)) +
+  # Create the histogram plot by cohort
+  ggplot(phase_cohort_summary, aes(x = Phase, y = Percentage, fill = Cohort)) +
     geom_bar(stat = "identity", position = "dodge") +
     theme_minimal() +
-    labs(title = "Cell Cycle Phase Distribution by Group (Percentage)",
+    labs(title = "Cell Cycle Phase Distribution by Cohort (Percentage)",
          x = "Cell Cycle Phase",
          y = "Percentage of Cells") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -1151,7 +1166,7 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
     # Count occurrences of each combination
     prop_data <- data %>%
       group_by(!!sym(x_feature), !!sym(y_feature)) %>%
-      summarise(count = n(), .groups = 'drop') %>%
+      summarise(count = n(), .cohorts = 'drop') %>%
       group_by(!!sym(x_feature)) %>%
       mutate(proportion = count / sum(count))
     
