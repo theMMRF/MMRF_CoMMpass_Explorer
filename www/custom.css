@@ -1,0 +1,158 @@
+/* GLOBAL FONT */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 15px;
+  color: #2c2c2c;
+}
+
+/* HEADER NAVBAR */
+.skin-blue .main-header .navbar {
+  background-color: #771544;
+  border-bottom: 3px solid #5e1034;
+}
+
+/* HEADER LOGO */
+.skin-blue .main-header .logo {
+  background-color: #771544;
+  color: white;
+}
+
+.skin-blue .main-header .logo:hover {
+  background-color: #5e1034;
+}
+
+/* SIDEBAR */
+.skin-blue .main-sidebar {
+  background-color: #3e0b22;
+}
+
+/* ACTIVE SIDEBAR TAB */
+.skin-blue .sidebar-menu > li.active > a {
+  background-color: #771544;
+  border-left: 5px solid #c2185b;
+  color: #ffffff;
+}
+
+/* BOX (PANEL) HEADER */
+.box {
+  border-top: 3px solid #771544;
+}
+.box-header {
+  background: #f7f7f7;
+  color: #771544;
+  font-weight: bold;
+}
+.box-title {
+  color: #771544;
+}
+
+/* ACTIVE TABS */
+.nav-tabs-custom > .nav-tabs > li.active > a {
+  background-color: #771544;
+  color: white;
+  border-color: #771544;
+}
+
+/* BUTTONS */
+
+/* TABLE STYLING (OPTIONAL) */
+.dataTable {
+  background-color: white;
+  color: #2c2c2c;
+}
+
+/* FOOTER OR MISC (optional) */
+hr {
+  border-color: #771544;
+}
+
+/* TOP TAB PANEL (tabsetPanel headers) */
+.nav-tabs > li > a {
+  color: #771544; /* Inactive tab text */
+}
+
+.nav-tabs > li > a:hover {
+  background-color: #f2e6ee; /* Light hover background */
+  color: #771544;
+}
+
+/* ACTIVE TAB (selected tab) */
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:focus,
+.nav-tabs > li.active > a:hover {
+  background-color: #771544;  /* Active tab bg */
+  color: #fff;                /* Active tab text */
+  border: 1px solid #771544;
+  border-bottom-color: transparent;
+}
+
+/* Top-level sidebar items on hover (not sub-items) */
+.skin-blue .main-sidebar .sidebar .sidebar-menu > li > a:hover {
+  background-color: #5e1034 !important;
+  border-left: 5px solid #c2185b !important;
+  color: white !important;
+}
+
+
+/* === SLIDER INPUT === */
+.irs-bar {
+  background: #771544 !important;
+  border-top: 1px solid #771544 !important;
+  border-bottom: 1px solid #771544 !important;
+}
+
+.irs-bar-edge {
+  background: #771544 !important;
+  border: 1px solid #771544 !important;
+}
+
+.irs-single,
+.irs-from,
+.irs-to {
+  background: #771544 !important;
+  color: white !important;
+  border: 1px solid #771544 !important;
+}
+
+.irs-slider {
+  background: #771544 !important;
+  border: 1px solid #5e1034 !important;
+}
+
+/* Override blue hover on sidebar toggle (hamburger icon) */
+.skin-blue .main-header .sidebar-toggle:hover {
+  background-color: #5e1034 !important;
+  color: white !important;
+}
+
+/* === SELECTIZE INPUT CUSTOMIZATION === */
+
+/* Input border (when focused) */
+.selectize-input.focus {
+  border-color: #771544 !important;
+  box-shadow: 0 0 5px #771544 !important;
+}
+
+/* Dropdown item list */
+.selectize-dropdown-content .option {
+  color: #333;
+  background-color: white;
+}
+
+/* Highlighted/selected item */
+.selectize-dropdown .active {
+  background-color: #771544 !important;
+  color: white !important;
+}
+
+/* Typed text (autocomplete) */
+.selectize-input input {
+  color: #2c2c2c;
+}
+
+/* Full input box styling */
+.selectize-control.single .selectize-input {
+  background-color: white;
+  border: 1px solid #ccc;
+  color: #333;
+}

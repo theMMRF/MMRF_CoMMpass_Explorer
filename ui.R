@@ -1,6 +1,7 @@
 source("global.R")
 # User interface ------
 dashboardPage(
+  # skin = "purple",
   # Header
   dashboardHeader(title = "CoMMpass Explorer"),
   
@@ -37,8 +38,7 @@ dashboardPage(
       
       menuItem("Gene Mutations", icon = icon("filter"),
                selectizeInput("mut_logic", "Filter Logic", choices = c("And", "Or"), selected = "And"),
-               selectizeInput("gene_include_filter", "Input Genes", choices = NULL, multiple = TRUE, options = list(create = TRUE, placeholder = 'Search for genes')),
-               numericInput("mut_number", "Number of Mutations", value = 0, min = 0, step = 1)
+               selectizeInput("gene_include_filter", "Input Genes", choices = NULL, multiple = TRUE, options = list(create = TRUE, placeholder = 'Search for genes'))
       ),
       
       menuItem("Gene Expression", icon = icon("filter"),
@@ -77,6 +77,9 @@ dashboardPage(
   
   # Dashboard
   dashboardBody(
+    tags$head(
+      tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
+    ),
     tabsetPanel(
       tabPanel("Overall Summary",
                fluidRow(
@@ -104,10 +107,21 @@ dashboardPage(
                
                fluidRow(
                  box(title = "Distribution by Group", width = 12,
-                     selectInput("clin_feature", "Enter a clinical feature", choices = setdiff(colnames(clinical_data), c("Tumor_Sample_Barcode", "Age", "Tx", "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", "OS_event")), width = "200px"),
+                     selectInput("clin_feature", 
+                                 "Enter a clinical feature", 
+                                 choices = get_clinical_feature_choices(clinical_data), 
+                                 width = "200px"),
                      plotlyOutput("clin_distribution")
                  )
+               ),
+               fluidRow(
+                 box(title = "Clinical Feature Significance Table", width = 12,
+                     p("Statistical comparison of clinical features between Group 1 and Group 2."),
+                     p(HTML("<strong>Significance levels:</strong> *** p<0.001, ** p<0.01, * p<0.05, NS = Not Significant")),
+                     DTOutput("significance_table")
+                 )
                )
+               
       ),
       
       tabPanel("Mutational Profile",
@@ -183,7 +197,7 @@ dashboardPage(
                ),
       ),
       
-      tabPanel("Tumor Cells",
+      tabPanel("Tumor Profile",
                fluidRow(
                  box(title = "TPM Distribution", width = 12,
                      htmlOutput("bulkNum"),
@@ -222,11 +236,14 @@ dashboardPage(
                
                fluidRow(
                  box(title = "DESeq2", width = 12,
-                     p("The DESeq2 analysis will perform differential expression analysis on Group 1 and Group 2, comparing their gene expression profiles to identify significant differences. Click 'Start DESeq2 Analysis' to proceed."),
+                     p("The DESeq2 analysis will perform differential expression analysis on Group 1 and Group 2,"),
+                     p("comparing their gene expression profiles to identify significant differences. Click 'Start DESeq2 Analysis' to proceed."),
+                     p("Each run would take several minutes depending on the sample size."),
                      fluidRow(
                        column(6, numericInput("p_threshold", "P-value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
                        column(6, numericInput("fc_threshold", "Log2 Fold Change Threshold", value = 1.5, min = 0, max = 10, step = 0.1))
                      ),
+                     verbatimTextOutput("deseq_status"),
                      actionButton("start_deseq2", "Start DESeq2 Analysis"),
                      plotOutput("bulkVolcano")
                  ),
@@ -244,15 +261,27 @@ dashboardPage(
                  ),
                ),
                
+               # fluidRow(
+               #   box(title = "ssGSEA", width = 12,
+               #       plotOutput("ssgsea_violin"),
+               #   ),
+               #   box(title = "Gene set table", width = 12,
+               #       DTOutput("ssgsea_table")
+               #   )
+               # )
+               
                fluidRow(
                  box(title = "ssGSEA", width = 12,
-                     selectInput("genesets", "Choose gene sets", choices = c("Acharya", "MSigDB-C2"), width = "200px"),
-                     plotOutput("ssgsea_violin"),
+                     selectizeInput("selected_gene_sets", "Select Gene Sets to Display:",
+                                    choices = NULL, multiple = TRUE),
+                     plotOutput("ssgsea_violin")
                  ),
                  box(title = "Gene set table", width = 12,
                      DTOutput("ssgsea_table")
                  )
                )
+               
+               
                
       ),
       
@@ -310,9 +339,27 @@ dashboardPage(
                      plotOutput("feature_distribution_plot", height = "800px")
                  )
                )
+      ),
+      tags$div(
+        style = "text-align: center; padding: 30px 10px 20px 10px; border-top: 1px solid #ccc; background-color: #f9f9f9;",
+        
+        tags$img(src = "MMRF_sign.png", height = "40px", style = "margin-bottom: 10px;"),
+        
+        tags$p(
+          strong("Reference: "), 
+          "Zhang W, Acharya C.R. (Chuck), ", 
+          em("Multiple Myeloma Research Foundation (MMRF)"),
+          strong(", "),
+          " (2024). doi: ", 
+          tags$a("[Link]", href = "", target = "_blank"),
+          style = "font-size: 90%; color: #771544;"
+        ),
+        
+        tags$p(
+          HTML("&copy; 2025 Multiple Myeloma Research Foundation"),
+          style = "font-size: 85%; color: #555;"
+        )
       )
     ),
-    p(strong("Reference: "), "Zhang W, Acharya C.R. (Chuck) ", em("Multiple Myeloma Research Foundation (MMRF) "), 
-      strong(", "), "(2024) ", "doi: ", a("[Link]", href = "", target = "_blank"), style = "font-size: 125%;")
   )
 )

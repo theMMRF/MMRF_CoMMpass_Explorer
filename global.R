@@ -11,11 +11,15 @@ lapply(packages, library, character.only = TRUE)
 bulkseq <- readRDS("data/bulkseq_baseline.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline.rds")
 # clinical_data <- readRDS("data/clinical_data_cleaned.rds")
-clinical_data <- readRDS("data/clinical_data_cleaned_new_surv.rds")
+# clinical_data <- readRDS("data/clinical_data_cleaned_new_surv.rds")
+clinical_data <- readRDS("data/clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
+# maf_data <- readRDS("data/maf_data_n937.rds")
+
+
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
-ssgsea_result_c2 <- readRDS("data/ssgsea_result_c2.rds")
+# ssgsea_result_c2 <- readRDS("data/ssgsea_result_c2.rds")
 # bulkseq <- readRDS("../../data/commpass_explorer/bulkseq_baseline.rds")
 # bulkseq_tpm <- readRDS("../../data/commpass_explorer/bulkseq_tpm_baseline.rds")
 # clinical_data <- readRDS("../../data/commpass_explorer/clinical_data_cleaned.rds")
@@ -30,97 +34,37 @@ clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 
 # Helper functions -----------
-# NA processing
-fill_na_with_same_patient <- function(data) {
-  unique_patients <- unique(sapply(strsplit(as.character(data$Tumor_Sample_Barcode), "_"),
-                                   function(x) paste(x[1], x[2], sep="_")))
-  
-  for (patient in unique_patients) {
-    # print(paste("Processing patient:", patient))
-    patient_rows <- grep(patient, data$Tumor_Sample_Barcode)
-    patient_data <- data[patient_rows, ]
-    
-    if (nrow(patient_data) > 1) {
-      for (col in names(data)) {
-        if (col != "Tumor_Sample_Barcode") {
-          
-          # Use first non-NA value of a column to fill in this column of other samples
-          all_non_na <- unlist(patient_data[!is.na(patient_data[[col]]), ..col])
-          
-          # If > 1, then there are multiple values for this clinical parameter of the same patient
-          if (length(unique(all_non_na)) > 1) {
-            stop("Error: conflicting clinical parameters for samples of the same patient.")
-          }
-          
-          non_na_value <- all_non_na[1]
-          
-          if (!is.na(non_na_value)) {
-            data[patient_rows, (col) := fifelse(is.na(get(..col)), non_na_value, get(..col))]
-          }
-        }
-      }
-    }
-  }
-  
-  return(data)
-}
-
-remove_all_na_rows <- function(data) {
-  cleaned_data <- data[!(rowSums(is.na(data)) == ncol(data)-1), ]
-  return(cleaned_data)
-}
-
 subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, group, logic) {
   if (is.null(include_genes)) return(clinical_data)
   maf_data_table <- maf_data@data
   
-  ## "Or" logic
   if (logic == "Or") {
-    # Filter for included genes if specified
-    if (group == "group1") {
-      included_patients <- unique(maf_data_table[Hugo_Symbol %in% include_genes, .(Tumor_Sample_Barcode)])
-      clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% included_patients$Tumor_Sample_Barcode]
-    }
-    
-    # Filter out excluded genes if specified
-    if (group == "group2") {
-      excluded_patients <- unique(maf_data_table[Hugo_Symbol %in% include_genes, .(Tumor_Sample_Barcode)])
-      clinical_data <- clinical_data[!clinical_data$Tumor_Sample_Barcode %in% excluded_patients$Tumor_Sample_Barcode]
+    matched <- maf_data_table[Hugo_Symbol %in% include_genes, unique(Tumor_Sample_Barcode)]
+    clinical_data <- if (group == "group1") {
+      clinical_data[clinical_data$Tumor_Sample_Barcode %in% matched,]
+    } else {
+      clinical_data[!clinical_data$Tumor_Sample_Barcode %in% matched,]
     }
   }
   
-  ## "And" logic
-  # Filter for included genes if specified
   if (logic == "And") {
-    if (group == "group1") {
-      sample_gene_count <- maf_data_table %>%
-        filter(Hugo_Symbol %in% include_genes) %>%
-        distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>%
-        group_by(Tumor_Sample_Barcode) %>%
-        summarise(gene_count = n(), .groups = "drop")
-      
-      samples_with_all_genes <- sample_gene_count %>%
-        filter(gene_count == length(include_genes)) %>%
-        pull(Tumor_Sample_Barcode)
-      
-      clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% samples_with_all_genes]
-    }
+    sample_gene_count <- maf_data_table %>%
+      filter(Hugo_Symbol %in% include_genes) %>%
+      distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>%
+      group_by(Tumor_Sample_Barcode) %>%
+      summarise(gene_count = n(), .groups = "drop")
     
-    # Filter out excluded genes if specified
-    if (group == "group2") {
-      sample_gene_count <- maf_data_table %>%
-        filter(Hugo_Symbol %in% include_genes) %>%
-        distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>%
-        group_by(Tumor_Sample_Barcode) %>%
-        summarise(gene_count = n(), .groups = "drop")
-      
-      samples_with_all_genes <- sample_gene_count %>%
-        filter(gene_count == length(include_genes)) %>%
-        pull(Tumor_Sample_Barcode)
-      
-      clinical_data <- clinical_data[!clinical_data$Tumor_Sample_Barcode %in% samples_with_all_genes]
+    matched <- sample_gene_count %>%
+      filter(gene_count == length(include_genes)) %>%
+      pull(Tumor_Sample_Barcode)
+    
+    clinical_data <- if (group == "group1") {
+      clinical_data[clinical_data$Tumor_Sample_Barcode %in% matched,]
+    } else {
+      clinical_data[!clinical_data$Tumor_Sample_Barcode %in% matched,]
     }
   }
+  
   return(clinical_data)
 }
 
@@ -129,16 +73,11 @@ filter_by_gene_expression <- function(clinical_data, gene=NULL, threshold=NULL, 
   
   if (gene %in% unique(rownames(bulkseq_tpm)) && (group == "group1")) {
     patient_ids <- colnames(bulkseq_tpm[, bulkseq_tpm[gene, ] >= threshold, drop = FALSE])
-    print("patient_ids")
-    print(length(patient_ids))
-    print(patient_ids)
     clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% patient_ids, ]
   }
   
   if (gene %in% unique(rownames(bulkseq_tpm)) && (group == "group2")) {
     patient_ids <- colnames(bulkseq_tpm[, bulkseq_tpm[gene, ] < threshold, drop = FALSE])
-    print("patient_ids")
-    print(length(patient_ids))
     clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% patient_ids, ]
   }
   
@@ -172,8 +111,6 @@ filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshol
 create_picker_input <- function(inputId, label, choices) {
   choices <- choices[!is.na(choices)]
   choices <- choices[choices!=""]
-  print("here")
-  print(choices)
   pickerInput(
     inputId = inputId,
     label = label,
@@ -194,82 +131,102 @@ create_group_filters_ui <- function(group_id, category) {
     div(id = paste0(group_id, "_", category, "_filters"),
         if (category == "clinical") {
           return(list(
-            create_picker_input(paste0("risk_filter_", group_id), "Risk Group (Davies-based)", sort(unique(clinical_data$Risk))),
-            uiOutput(paste0("age_filter_", group_id)),
-            create_picker_input(paste0("race_filter_", group_id), "Race", sort(unique(clinical_data$Race))),
-            create_picker_input(paste0("ethnicity_filter_", group_id), "Ethnicity", sort(unique(clinical_data$Ethnicity))),
+            # Demographics
             create_picker_input(paste0("sex_filter_", group_id), "Sex", sort(unique(clinical_data$Sex))),
-            create_picker_input(paste0("stage_filter_", group_id), "Stage (ISS)", sort(unique(clinical_data$ISS))),
-            create_picker_input(paste0("asct_filter_", group_id), "ASCT Firstline", sort(unique(clinical_data$ASCT))),
-            create_picker_input(paste0("triplet_filter_", group_id), "Triplet Firstline", sort(unique(clinical_data$TRIP_FirstLine)))
+            create_picker_input(paste0("race_filter_", group_id), "Race", sort(unique(clinical_data$Race))),
+            uiOutput(paste0("age_filter_", group_id)),
+            
+            # Clinical classification
+            create_picker_input(paste0("stage_filter_", group_id), "ISS Stage", sort(unique(clinical_data$ISS))),
+            create_picker_input(paste0("risk_filter_", group_id), "IMWG Risk Classification", sort(unique(clinical_data$IMWG_Risk_Class))),
+            create_picker_input(paste0("cyto_risk_filter_", group_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$Skerget_Cytogenetic_High_Risk))),
+            
+            # Subtypes
+            create_picker_input(paste0("rna_subtype_filter_", group_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_RNA_Subtype_Name))),
+            create_picker_input(paste0("cna_subtype_filter_", group_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_CNA_Subtype_Name))),
+            
+            # Treatment
+            create_picker_input(paste0("triplet_filter_", group_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First))),
+            create_picker_input(paste0("asct_filter_", group_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First)))
           ))
         } else if (category == "molecular") {
           return(list(
-            create_picker_input(paste0("diploidy_filter_", group_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
-            create_picker_input(paste0("chromothripsis_filter_", group_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
-            
-            create_picker_input(paste0("t_11_14_filter_", group_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
-            create_picker_input(paste0("t_4_14_filter_", group_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
-            
-            create_picker_input(paste0("chr_1q21_amp_filter_", group_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
+            # Chromosomal abnormalities
             create_picker_input(paste0("chr_1q21_gain_filter_", group_id), "1q21 Gain", sort(unique(clinical_data$chr_1q21_gain))),
+            create_picker_input(paste0("chr_1q21_amp_filter_", group_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
             create_picker_input(paste0("chr_13q14_del_filter_", group_id), "13q14 Deletion", sort(unique(clinical_data$chr_13q14_del))),
             create_picker_input(paste0("chr_13q34_del_filter_", group_id), "13q34 Deletion", sort(unique(clinical_data$chr_13q34_del))),
             create_picker_input(paste0("chr_17p13_del_filter_", group_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
+            create_picker_input(paste0("diploidy_filter_", group_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
+            create_picker_input(paste0("chromothripsis_filter_", group_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
             
-            create_picker_input(paste0("apobec_filter_", group_id), "Apobec", sort(unique(clinical_data$APOBEC))),
-            create_picker_input(paste0("MAF_MAFB_filter_", group_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
-            create_picker_input(paste0("tp53_filter_", group_id), "TP53 inactivation", sort(unique(clinical_data$TP53_inactivation)))
+            # Translocations
+            create_picker_input(paste0("t_11_14_filter_", group_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
+            create_picker_input(paste0("t_4_14_filter_", group_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
+            
+            # Mutational markers
+            create_picker_input(paste0("maf_filter_", group_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
+            create_picker_input(paste0("apobec_filter_", group_id), "APOBEC", sort(unique(clinical_data$APOBEC))),
+            create_picker_input(paste0("tp53_filter_", group_id), "TP53 Functional Copies", sort(unique(clinical_data$TP53_Funct_Copies))),
+            create_picker_input(paste0("tp53_ns_filter_", group_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$TP53_NS_Mut_Count)))
           ))
-        } else if (category == "gene") {
-          
         }
     )
   )
-  
 }
+
 
 get_group_filters <- function(input, group_id, category) {
   if (category == "clinical") {
     return(list(
-      risk = input[[paste0("risk_filter_", group_id)]],
-      age = input[[paste0("age_", group_id)]],
-      race = input[[paste0("race_filter_", group_id)]],
-      ethnicity = input[[paste0("ethnicity_filter_", group_id)]],
       sex = input[[paste0("sex_filter_", group_id)]],
+      race = input[[paste0("race_filter_", group_id)]],
+      age = input[[paste0("age_", group_id)]],
+      
       stage = input[[paste0("stage_filter_", group_id)]],
-      asct = input[[paste0("asct_filter_", group_id)]],
-      triplet = input[[paste0("triplet_filter_", group_id)]]
+      risk = input[[paste0("risk_filter_", group_id)]],
+      cyto_risk = input[[paste0("cyto_risk_filter_", group_id)]],
+      
+      rna_subtype = input[[paste0("rna_subtype_filter_", group_id)]],
+      cna_subtype = input[[paste0("cna_subtype_filter_", group_id)]],
+      
+      triplet = input[[paste0("triplet_filter_", group_id)]],
+      asct = input[[paste0("asct_filter_", group_id)]]
     ))
   } else if (category == "molecular") {
     return(list(
+      q21_gain = input[[paste0("chr_1q21_gain_filter_", group_id)]],
+      q21_amp = input[[paste0("chr_1q21_amp_filter_", group_id)]],
+      del13q14 = input[[paste0("chr_13q14_del_filter_", group_id)]],
+      del13q34 = input[[paste0("chr_13q34_del_filter_", group_id)]],
+      del17p13 = input[[paste0("chr_17p13_del_filter_", group_id)]],
+      
       diploidy = input[[paste0("diploidy_filter_", group_id)]],
       chromothripsis = input[[paste0("chromothripsis_filter_", group_id)]],
-      t11_14 = input[[paste0("t(11;14)_filter_", group_id)]],
-      t4_14 = input[[paste0("t(4;14)_filter_", group_id)]],
-      q21_amp = input[[paste0("1q21_amp_filter_", group_id)]],
-      q21_gain = input[[paste0("1q21_gain_filter_", group_id)]],
-      del13q14 = input[[paste0("13q14_del_filter_", group_id)]],
-      del13q34 = input[[paste0("13q34_del_filter_", group_id)]],
-      del17p13 = input[[paste0("17p13_del_filter_", group_id)]]
-    ))
-  } else if (category == "gene") {
-    return(list(
-      apobec = input[[paste0("apobec_filter_", group_id)]],
+      
+      t11_14 = input[[paste0("t_11_14_filter_", group_id)]],
+      t4_14 = input[[paste0("t_4_14_filter_", group_id)]],
+      
       maf = input[[paste0("maf_filter_", group_id)]],
-      tp53 = input[[paste0("tp53_filter_", group_id)]]
+      apobec = input[[paste0("apobec_filter_", group_id)]],
+      tp53 = input[[paste0("tp53_filter_", group_id)]],
+      tp53_ns = input[[paste0("tp53_ns_filter_", group_id)]]
     ))
   }
 }
 
 filter_group_data <- function(data, filters) {
-  data <- as_tibble(data)  # Ensures compatibility with dplyr functions
+  data <- as_tibble(data) # Ensures compatibility with dplyr functions
   
   data <- data %>%
-    # Clinical filters
+    # Demographic filters
     {
-      if (!is.null(filters$risk) && length(filters$risk) > 0)
-        filter(., Risk %in% filters$risk) else .
+      if (!is.null(filters$sex) && length(filters$sex) > 0)
+        filter(., Sex %in% filters$sex) else .
+    } %>%
+    {
+      if (!is.null(filters$race) && length(filters$race) > 0)
+        filter(., Race %in% filters$race) else .
     } %>%
     {
       if (!is.null(filters$age) && length(filters$age) > 0) {
@@ -279,32 +236,62 @@ filter_group_data <- function(data, filters) {
           filter(., Age >= filters$age[1], Age <= filters$age[2]) else .
       } else .
     } %>%
-    {
-      if (!is.null(filters$race) && length(filters$race) > 0)
-        filter(., Race %in% filters$race) else .
-    } %>%
-    {
-      if (!is.null(filters$ethnicity) && length(filters$ethnicity) > 0)
-        filter(., Ethnicity %in% filters$ethnicity) else .
-    } %>%
-    {
-      if (!is.null(filters$sex) && length(filters$sex) > 0)
-        filter(., Sex %in% filters$sex) else .
-    } %>%
+    
+    # Clinical classification
     {
       if (!is.null(filters$stage) && length(filters$stage) > 0)
         filter(., ISS %in% filters$stage) else .
     } %>%
     {
-      if (!is.null(filters$asct) && length(filters$asct) > 0)
-        filter(., ASCT %in% filters$asct) else .
+      if (!is.null(filters$risk) && length(filters$risk) > 0)
+        filter(., IMWG_Risk_Class %in% filters$risk) else .
     } %>%
     {
-      if (!is.null(filters$triplet) && length(filters$triplet) > 0)
-        filter(., TRIP_FirstLine %in% filters$triplet) else .
+      if (!is.null(filters$cyto_risk) && length(filters$cyto_risk) > 0)
+        filter(., Skerget_Cytogenetic_High_Risk %in% filters$cyto_risk) else .
     } %>%
     
-    # Molecular filters
+    # Subtypes
+    {
+      if (!is.null(filters$rna_subtype) && length(filters$rna_subtype) > 0)
+        filter(., Skerget_RNA_Subtype_Name %in% filters$rna_subtype) else .
+    } %>%
+    {
+      if (!is.null(filters$cna_subtype) && length(filters$cna_subtype) > 0)
+        filter(., Skerget_CNA_Subtype_Name %in% filters$cna_subtype) else .
+    } %>%
+    
+    # Treatment
+    {
+      if (!is.null(filters$triplet) && length(filters$triplet) > 0)
+        filter(., Triplet_First %in% filters$triplet) else .
+    } %>%
+    {
+      if (!is.null(filters$asct) && length(filters$asct) > 0)
+        filter(., ASCT_First %in% filters$asct) else .
+    } %>%
+    
+    # Chromosomal abnormalities
+    {
+      if (!is.null(filters$q21_gain) && length(filters$q21_gain) > 0)
+        filter(., chr_1q21_gain %in% filters$q21_gain) else .
+    } %>%
+    {
+      if (!is.null(filters$q21_amp) && length(filters$q21_amp) > 0)
+        filter(., chr_1q21_amp %in% filters$q21_amp) else .
+    } %>%
+    {
+      if (!is.null(filters$del13q14) && length(filters$del13q14) > 0)
+        filter(., chr_13q14_del %in% filters$del13q14) else .
+    } %>%
+    {
+      if (!is.null(filters$del13q34) && length(filters$del13q34) > 0)
+        filter(., chr_13q34_del %in% filters$del13q34) else .
+    } %>%
+    {
+      if (!is.null(filters$del17p13) && length(filters$del17p13) > 0)
+        filter(., chr_17p13_del %in% filters$del17p13) else .
+    } %>%
     {
       if (!is.null(filters$diploidy) && length(filters$diploidy) > 0)
         filter(., Hyperdiploidy %in% filters$diploidy) else .
@@ -313,52 +300,37 @@ filter_group_data <- function(data, filters) {
       if (!is.null(filters$chromothripsis) && length(filters$chromothripsis) > 0)
         filter(., chromothripsis %in% filters$chromothripsis) else .
     } %>%
+    
+    # Translocations
     {
       if (!is.null(filters$t11_14) && length(filters$t11_14) > 0)
-        filter(., `t(11;14)` %in% filters$t11_14) else .
+        filter(., t_11_14 %in% filters$t11_14) else .
     } %>%
     {
       if (!is.null(filters$t4_14) && length(filters$t4_14) > 0)
-        filter(., `t(4;14)` %in% filters$t4_14) else .
-    } %>%
-    {
-      if (!is.null(filters$q21_amp) && length(filters$q21_amp) > 0)
-        filter(., `1q21_amp` %in% filters$q21_amp) else .
-    } %>%
-    {
-      if (!is.null(filters$q21_gain) && length(filters$q21_gain) > 0)
-        filter(., `1q21_gain` %in% filters$q21_gain) else .
-    } %>%
-    {
-      if (!is.null(filters$del13q14) && length(filters$del13q14) > 0)
-        filter(., `13q14_del` %in% filters$del13q14) else .
-    } %>%
-    {
-      if (!is.null(filters$del13q34) && length(filters$del13q34) > 0)
-        filter(., `13q34_del` %in% filters$del13q34) else .
-    } %>%
-    {
-      if (!is.null(filters$del17p13) && length(filters$del17p13) > 0)
-        filter(., `17p13_del` %in% filters$del17p13) else .
+        filter(., t_4_14 %in% filters$t4_14) else .
     } %>%
     
-    # Gene mutation filters
+    # Mutational markers
+    {
+      if (!is.null(filters$maf) && length(filters$maf) > 0)
+        filter(., MAF_MAFB %in% filters$maf) else .
+    } %>%
     {
       if (!is.null(filters$apobec) && length(filters$apobec) > 0)
         filter(., APOBEC %in% filters$apobec) else .
     } %>%
     {
-      if (!is.null(filters$maf) && length(filters$maf) > 0)
-        filter(., `MAF/MAFB` %in% filters$maf) else .
+      if (!is.null(filters$tp53) && length(filters$tp53) > 0)
+        filter(., TP53_Funct_Copies %in% filters$tp53) else .
     } %>%
     {
-      if (!is.null(filters$tp53) && length(filters$tp53) > 0)
-        filter(., TP53_inactivation %in% filters$tp53) else .
+      if (!is.null(filters$tp53_ns) && length(filters$tp53_ns) > 0)
+        filter(., TP53_NS_Mut_Count %in% filters$tp53_ns) else .
     }
   
   return(data)
 }
-
 
 # Determine selected group
 get_group_selected <- function(filtered_data, group_selected) {
@@ -372,7 +344,7 @@ get_group_selected <- function(filtered_data, group_selected) {
 # Summary of clinical data
 generate_summary_plot <- function(group_selected, filtered_data) {
   selected_data <- filtered_data[[group_selected]]
-  features <- c("Race", "Ethnicity", "Sex", "Age_range", "ISS", "ASCT")
+  features <- c("Race", "Sex", "Age_range", "ISS", "ASCT_First")
   
   unique_values_counts_list <- lapply(features, function(feature) {
     data.frame(Value = names(table(selected_data[[feature]])),
@@ -392,6 +364,355 @@ generate_summary_plot <- function(group_selected, filtered_data) {
           legend.position = "none") +
     geom_text(aes(label = Count), vjust = 0.5, size = 3)
 }
+
+create_categorical_plot <- function(data, feature, feature_label) {
+  plot_data <- data %>%
+    group_by(group, !!sym(feature)) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(group) %>%
+    mutate(
+      percentage = n / sum(n) * 100,
+      label = paste0("Group: ", group,
+                     "<br>", feature_label, ": ", !!sym(feature),
+                     "<br>Percentage: ", sprintf("%.2f", percentage), "%")
+    )
+  
+  ggplot(plot_data, aes_string(x = feature, y = "percentage", fill = "group", alpha = "group", text = "label")) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(x = feature_label, y = "Percentage") +
+    scale_alpha_manual(values = c(Group1 = 0.9, Group2 = 0.9)) +
+    scale_fill_manual(values = c(Group1 = "#E87D72", Group2 = "#5BAEB0")) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+#' Create distribution plot data for continuous variables
+#' @param data The combined dataset
+#' @param feature The feature name to analyze
+#' @param feature_label The display label for the feature
+#' @return ggplot object
+create_continuous_plot <- function(data, feature, feature_label) {
+  data <- data %>%
+    mutate(label = paste0("Group: ", group,
+                          "<br>", feature_label, ": ", sprintf("%.2f", !!sym(feature))))
+  
+  ggplot(data, aes_string(x = "group", y = feature, fill = "group", text = "label")) +
+    geom_boxplot(outlier.alpha = 0.4) +
+    labs(x = "Group", y = feature_label) +
+    scale_fill_manual(values = c(Group1 = "#E87D72", Group2 = "#5BAEB0")) +
+    theme_minimal()
+}
+
+#' Main function to create distribution plot
+#' @param data The combined dataset
+#' @param feature The feature name to analyze
+#' @param feature_label The display label for the feature
+#' @param continuous_features Vector of continuous feature names
+#' @return plotly object
+create_distribution_plot <- function(data, feature, feature_label, continuous_features) {
+  is_continuous <- feature %in% continuous_features
+  
+  if (!is_continuous) {
+    p <- create_categorical_plot(data, feature, feature_label)
+  } else {
+    p <- create_continuous_plot(data, feature, feature_label)
+  }
+  
+  ggplotly(p, tooltip = "text") %>%
+    layout(hovermode = "x")
+}
+
+# =============================================================================
+# STATISTICAL TESTING FUNCTIONS
+# =============================================================================
+
+#' Perform statistical test for continuous variables
+#' @param group1_vals Vector of values for group 1
+#' @param group2_vals Vector of values for group 2
+#' @return List with test results
+test_continuous_variable <- function(group1_vals, group2_vals) {
+  # Remove NA values
+  group1_vals <- group1_vals[!is.na(group1_vals)]
+  group2_vals <- group2_vals[!is.na(group2_vals)]
+  
+  if (length(group1_vals) <= 2 || length(group2_vals) <= 2) {
+    return(list(
+      test_name = "Insufficient data",
+      statistic = "NA",
+      p_value = NA,
+      group1_summary = "Insufficient data",
+      group2_summary = "Insufficient data"
+    ))
+  }
+  
+  # Check normality
+  normal1 <- tryCatch(shapiro.test(group1_vals)$p.value > 0.05, error = function(e) FALSE)
+  normal2 <- tryCatch(shapiro.test(group2_vals)$p.value > 0.05, error = function(e) FALSE)
+  
+  if (normal1 && normal2 && length(group1_vals) >= 3 && length(group2_vals) >= 3) {
+    # Use t-test
+    test_result <- tryCatch(t.test(group1_vals, group2_vals), error = function(e) NULL)
+    test_name <- "t-test"
+    if (!is.null(test_result)) {
+      statistic <- paste0("t = ", round(test_result$statistic, 3))
+      p_value <- test_result$p.value
+    } else {
+      statistic <- "NA"
+      p_value <- NA
+    }
+  } else {
+    # Use Mann-Whitney U test
+    test_result <- tryCatch(wilcox.test(group1_vals, group2_vals), error = function(e) NULL)
+    test_name <- "Mann-Whitney U"
+    if (!is.null(test_result)) {
+      statistic <- paste0("W = ", round(test_result$statistic, 3))
+      p_value <- test_result$p.value
+    } else {
+      statistic <- "NA"
+      p_value <- NA
+    }
+  }
+  
+  # Summary statistics
+  group1_summary <- paste0("Mean: ", round(mean(group1_vals, na.rm = TRUE), 2),
+                           " (SD: ", round(sd(group1_vals, na.rm = TRUE), 2), ")")
+  group2_summary <- paste0("Mean: ", round(mean(group2_vals, na.rm = TRUE), 2),
+                           " (SD: ", round(sd(group2_vals, na.rm = TRUE), 2), ")")
+  
+  return(list(
+    test_name = test_name,
+    statistic = statistic,
+    p_value = p_value,
+    group1_summary = group1_summary,
+    group2_summary = group2_summary
+  ))
+}
+
+#' Perform statistical test for categorical variables
+#' @param data The combined dataset
+#' @param feature The feature name to analyze
+#' @return List with test results
+test_categorical_variable <- function(data, feature) {
+  contingency_table <- tryCatch(table(data$group, data[[feature]], useNA = "no"),
+                                error = function(e) NULL)
+  
+  if (is.null(contingency_table) || sum(contingency_table) == 0) {
+    return(list(
+      test_name = "Insufficient data",
+      statistic = "NA",
+      p_value = NA,
+      group1_summary = "Insufficient data",
+      group2_summary = "Insufficient data"
+    ))
+  }
+  
+  # Check for very low frequencies that could cause issues
+  min_cell_count <- min(contingency_table)
+  total_cells <- length(contingency_table)
+  cells_less_than_5 <- sum(contingency_table < 5)
+  
+  # Skip analysis if too many cells have low counts or if any cell has 0 counts
+  if (min_cell_count == 0 || cells_less_than_5 > (total_cells/2)) {
+    return(list(
+      test_name = "Low frequency categories",
+      statistic = "NA",
+      p_value = NA,
+      group1_summary = "Low frequency",
+      group2_summary = "Low frequency"
+    ))
+  }
+  
+  # Check if any expected frequencies are < 5
+  expected_freq <- tryCatch(chisq.test(contingency_table)$expected, error = function(e) NULL)
+  use_fisher <- !is.null(expected_freq) && any(expected_freq < 5)
+  
+  if (use_fisher) {
+    # For tables larger than 2x2, Fisher's exact test can be computationally intensive
+    if (nrow(contingency_table) == 2 && ncol(contingency_table) == 2) {
+      test_result <- tryCatch(fisher.test(contingency_table), error = function(e) NULL)
+      test_name <- "Fisher's exact"
+      if (!is.null(test_result)) {
+        statistic <- paste0("OR = ", round(test_result$estimate, 3))
+        p_value <- test_result$p.value
+      } else {
+        statistic <- "NA"
+        p_value <- NA
+      }
+    } else {
+      # Use simulation for larger tables
+      test_result <- tryCatch(chisq.test(contingency_table, simulate.p.value = TRUE, B = 2000), 
+                              error = function(e) NULL)
+      test_name <- "Chi-square (simulated)"
+      if (!is.null(test_result)) {
+        statistic <- paste0("χ² = ", round(test_result$statistic, 3))
+        p_value <- test_result$p.value
+      } else {
+        statistic <- "NA"
+        p_value <- NA
+      }
+    }
+  } else {
+    test_result <- tryCatch(chisq.test(contingency_table), error = function(e) NULL)
+    test_name <- "Chi-square"
+    if (!is.null(test_result)) {
+      statistic <- paste0("χ² = ", round(test_result$statistic, 3))
+      p_value <- test_result$p.value
+    } else {
+      statistic <- "NA"
+      p_value <- NA
+    }
+  }
+  
+  # Summary - proportions
+  if ("Group1" %in% rownames(contingency_table) && "Group2" %in% rownames(contingency_table)) {
+    group1_counts <- contingency_table["Group1", ]
+    group2_counts <- contingency_table["Group2", ]
+    group1_total <- sum(group1_counts)
+    group2_total <- sum(group2_counts)
+    
+    group1_summary <- paste(names(group1_counts), 
+                            paste0(group1_counts, " (", round(group1_counts/group1_total*100, 1), "%)"),
+                            sep = ": ", collapse = "; ")
+    group2_summary <- paste(names(group2_counts),
+                            paste0(group2_counts, " (", round(group2_counts/group2_total*100, 1), "%)"),
+                            sep = ": ", collapse = "; ")
+  } else {
+    group1_summary <- "Data unavailable"
+    group2_summary <- "Data unavailable"
+  }
+  
+  return(list(
+    test_name = test_name,
+    statistic = statistic,
+    p_value = p_value,
+    group1_summary = group1_summary,
+    group2_summary = group2_summary
+  ))
+}
+
+#' Determine significance level from p-value
+#' @param p_value The p-value
+#' @return Significance indicator string
+get_significance_level <- function(p_value) {
+  if (is.na(p_value)) {
+    return("NA")
+  } else if (p_value < 0.001) {
+    return("***")
+  } else if (p_value < 0.01) {
+    return("**")
+  } else if (p_value < 0.05) {
+    return("*")
+  } else {
+    return("NS")
+  }
+}
+
+#' Format p-value for display
+#' @param p_value The p-value
+#' @return Formatted p-value string
+format_p_value <- function(p_value) {
+  if (is.na(p_value)) {
+    return("NA")
+  } else if (p_value < 0.001) {
+    return("<0.001")
+  } else {
+    return(sprintf("%.4f", p_value))
+  }
+}
+
+#' Create complete significance table
+#' @param data The combined dataset
+#' @param clinical_features Vector of clinical feature names to test
+#' @param continuous_features Vector of continuous feature names
+#' @return Data frame with significance results
+create_significance_table <- function(data, clinical_features, continuous_features) {
+  results <- data.frame(
+    Feature = character(),
+    Type = character(),
+    Test_Used = character(),
+    P_Value = numeric(),
+    Statistic = character(),
+    Group1_Summary = character(),
+    Group2_Summary = character(),
+    Significance = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (feature in clinical_features) {
+    # Skip if feature has too many missing values
+    if (sum(!is.na(data[[feature]])) < 10) next
+    
+    # Determine if continuous or categorical
+    is_continuous <- feature %in% continuous_features
+    
+    if (is_continuous) {
+      group1_vals <- data[data$group == "Group1", feature]
+      group2_vals <- data[data$group == "Group2", feature]
+      test_results <- test_continuous_variable(group1_vals, group2_vals)
+    } else {
+      test_results <- test_categorical_variable(data, feature)
+    }
+    
+    # Determine significance level
+    significance <- get_significance_level(test_results$p_value)
+    
+    # Add to results
+    results <- rbind(results, data.frame(
+      Feature = feature,
+      Type = ifelse(is_continuous, "Continuous", "Categorical"),
+      Test_Used = test_results$test_name,
+      P_Value = test_results$p_value,
+      Statistic = test_results$statistic,
+      Group1_Summary = test_results$group1_summary,
+      Group2_Summary = test_results$group2_summary,
+      Significance = significance,
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  # Format p-values for display
+  results$P_Value_Display <- sapply(results$P_Value, format_p_value)
+  
+  # Create final display table (without group summaries)
+  display_table <- results[, c("Feature", "Type", "Test_Used", "P_Value_Display", 
+                               "Statistic", "Significance")]
+  colnames(display_table) <- c("Clinical Feature", "Type", "Statistical Test", "P-Value", 
+                               "Test Statistic", "Significance")
+  
+  # Sort by p-value (significant first)
+  display_table <- display_table[order(results$P_Value, na.last = TRUE), ]
+  
+  return(display_table)
+}
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+#' Get clinical feature choices for selectInput
+#' @param clinical_data The clinical dataset
+#' @param exclude_cols Vector of column names to exclude
+#' @return Vector of feature choices
+get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
+  default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Age", "Tx",
+                       "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", 
+                       "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event")
+  
+  if (!is.null(exclude_cols)) {
+    exclude_cols <- c(default_exclude, exclude_cols)
+  } else {
+    exclude_cols <- default_exclude
+  }
+  
+  setdiff(colnames(clinical_data), exclude_cols)
+}
+
+#' Define continuous features (customize this for your dataset)
+#' @return Vector of continuous feature names
+get_continuous_features <- function() {
+  c("BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
+}
+
 
 # Function to process DESeq2 -----
 process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) {
@@ -620,8 +941,6 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   merged_data <- merge(clinical_combined, ssgsea_result_t, by = "Tumor_Sample_Barcode")
   
   # Transform to long data
-  # long_data <- melt(merged_data, id.vars = c("Tumor_Sample_Barcode", "group"))
-  # colnames(long_data) <- c("Sample", "Group", "GeneSet", "EnrichmentScore")
   long_data <- pivot_longer(
     merged_data,
     cols = -c(Tumor_Sample_Barcode, group),

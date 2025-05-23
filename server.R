@@ -13,12 +13,6 @@ shinyServer(function(input, output, session) {
     updateSelectizeInput(session, "gene_expr_search", choices = gene_choices, server = TRUE)
   })
   
-  observeEvent(input$mut_number, {
-    if (!is.na(input$mut_number) && input$mut_number %% 1 != 0) {
-      updateNumericInput(session, "mut_number", value = round(input$mut_number))
-    }
-  })
-  
   # Filters interface
   # Group 1
   output$age_filter_group1 <- renderUI({
@@ -400,25 +394,42 @@ shinyServer(function(input, output, session) {
     )
   })
   
-  # Distribution
+  # Distribution Plot
   output$clin_distribution <- renderPlotly({
     combined_data <- filtered_data$combined
     interested_feature <- input$clin_feature
+    continuous_features <- get_continuous_features()
     
-    # Handle column names with numbers or special characters
-    interested_feature <- paste0("`", interested_feature, "`")
-    
-    p <- ggplot(combined_data, aes_string(x = interested_feature, alpha = "group", fill = "group")) +
-      geom_bar(position = "dodge") +
-      labs(title = "", x = input$clin_feature, y = "Count") +
-      scale_alpha_manual(values = c(Group1 = 1, Group2 = 0.5)) +
-      scale_fill_manual(values = c(Group1 = "#E87D72", Group2 = "#5BAEB0")) +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-    
-    ggplotly(p) %>%
-      layout(hovermode = "x")
+    create_distribution_plot(
+      data = combined_data,
+      feature = interested_feature,
+      feature_label = input$clin_feature,
+      continuous_features = continuous_features
+    )
   })
+  
+  # Statistical Significance Table
+  output$significance_table <- renderDT({
+    combined_data <- filtered_data$combined
+    clinical_features <- get_clinical_feature_choices(clinical_data)
+    continuous_features <- get_continuous_features()
+    
+    significance_table <- create_significance_table(
+      data = combined_data,
+      clinical_features = clinical_features,
+      continuous_features = continuous_features
+    )
+    
+    return(significance_table)
+  }, options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    columnDefs = list(
+      list(targets = 5, width = "80px", className = "dt-center") # Significance column
+    )
+  ))
+  
+  
   
   # WGS -------------------------
   # Draw MAF summary plot
@@ -661,70 +672,98 @@ shinyServer(function(input, output, session) {
   #            # cluster_cols = FALSE, # set to TRUE If we want to order by "group"
   #            annotation_col = annotation_col)
   # })
-  
-  # Perform DESeq2 analysis
+  # Reactive value to hold DESeq2 results
   deseq2_results <- reactiveValues(result = NULL)
+  
+  # Trigger DESeq2 analysis when the button is clicked
   observeEvent(input$start_deseq2, {
-    results <- process_deseq2(filtered_data, bulkseq, min_counts=10, min_samples=5) # Default p=0.05, logFC=1.5
-    deseq2_results$result <- results
+    withProgress(message = "Running DESeq2 analysis...", value = 0.5, {
+      results <- process_deseq2(filtered_data, bulkseq, min_counts = 10, min_samples = 5)
+      deseq2_results$result <- results
+    })
   })
   
-  # Observe changes in threshold inputs and update volcano plot
-  observeEvent({
-    input$p_threshold
-    input$fc_threshold
-  }, {
-    # Volcano plot
-    if (!is.null(deseq2_results$result)) {
-      output$bulkVolcano <- renderPlot({
-        degs <- deseq2_results$result
-        volcano_plot <- deseq2_volcano(degs, input$p_threshold, input$fc_threshold)
-        print(volcano_plot)
-      })
-    }
-    
-    # DEGs table
-    if (!is.null(deseq2_results$result)) {
-      degs <- deseq2_results$result %>%
-        dplyr::select(c(1,2,6,7))
-      
-      degs$baseMean <- round(degs$baseMean, digits=2)
-      degs$log2FoldChange <- round(degs$log2FoldChange, digits=2)
-      
-      degs$significant <- ifelse(degs$padj < input$p_threshold & degs$log2FoldChange > input$fc_threshold, "Up-regulated",
-                                 ifelse(degs$padj < input$p_threshold & degs$log2FoldChange < -input$fc_threshold, "Down-regulated", "Not Significant"))
-      
-      output$DEGs_table <- renderDT({
-        datatable(degs, options = list(pageLength = 10, autoWidth = TRUE))
-      })
-    }
+  # Reactive expression to apply user thresholds
+  filtered_degs <- reactive({
+    req(deseq2_results$result)
+    degs <- deseq2_results$result
+    degs$significant <- ifelse(degs$padj < input$p_threshold & degs$log2FoldChange > input$fc_threshold, "Up-regulated",
+                               ifelse(degs$padj < input$p_threshold & degs$log2FoldChange < -input$fc_threshold, "Down-regulated", "Not Significant"))
+    degs
   })
+  
+  # Render volcano plot
+  output$bulkVolcano <- renderPlot({
+    req(filtered_degs())
+    volcano_plot <- deseq2_volcano(filtered_degs(), input$p_threshold, input$fc_threshold)
+    print(volcano_plot)
+  })
+  
+  # Render DEGs table
+  output$DEGs_table <- renderDT({
+    req(filtered_degs())
+    degs <- filtered_degs() %>%
+      dplyr::select(baseMean, log2FoldChange, padj, significant)
+    
+    degs$baseMean <- round(degs$baseMean, 2)
+    degs$log2FoldChange <- round(degs$log2FoldChange, 2)
+    
+    datatable(degs, options = list(pageLength = 10, autoWidth = TRUE))
+  })
+  
   
   # BulkRNA-seq Enrichment Analysis -----------
   ssgsea_data <- reactive({
-    req(input$genesets, filtered_data)
+    req(filtered_data)
     clinical_combined <- filtered_data$combined
-
-    if (input$genesets == "Acharya") {
-      # Use genesets defined by Chaitanya Acharya
-      results <- compute_significant_gene_sets(ssgsea_result_ca, clinical_combined)
-      
-    } else if (input$genesets == "MSigDB-C2") {
-      # Use MSigDB-C2 genesets
-      results <- compute_significant_gene_sets(ssgsea_result_c2, clinical_combined)
-    }
+    results <- compute_significant_gene_sets(ssgsea_result_ca, clinical_combined)
     return(results)
+  })
+  
+  observe({
+    results <- ssgsea_data()
+    gene_sets <- unique(results$wilcox_results[order(results$wilcox_results$adjusted_p_value), ]$GeneSet)
+    updateSelectizeInput(session, "selected_gene_sets",
+                         choices = gene_sets,
+                         selected = head(gene_sets, 5), # default selection
+                         server = TRUE)
   })
   
   output$ssgsea_violin <- renderPlot({
     results <- ssgsea_data()
-    p <- create_violin_plot(results$wilcox_results, results$long_data)
+    req(input$selected_gene_sets)
+    
+    plot_data <- results$long_data %>%
+      filter(GeneSet %in% input$selected_gene_sets)
+    
+    p <- ggplot(plot_data, aes(x = Group, y = EnrichmentScore, fill = Group)) +
+      geom_violin(trim = FALSE) +
+      geom_boxplot(width = 0.1, outlier.shape = NA) +
+      facet_wrap(~GeneSet, scales = "free_y") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
     print(p)
   })
+
+  # output$ssgsea_violin <- renderPlot({
+  #   results <- ssgsea_data()
+  #   p <- create_violin_plot(results$wilcox_results, results$long_data)
+  #   print(p)
+  # })
   
   output$ssgsea_table <- renderDT({
     results <- ssgsea_data()
-    datatable(results$wilcox_results, options = list(pageLength = 10, autoWidth = TRUE))
+    table_data <- results$wilcox_results
+    
+    # Format numeric columns without losing tiny values
+    numeric_cols <- sapply(table_data, is.numeric)
+    table_data <- table_data[order(table_data$adjusted_p_value), ]
+    
+    table_data[numeric_cols] <- lapply(table_data[numeric_cols], function(x) {
+      ifelse(x < 0.001, formatC(x, format = "e", digits = 2), formatC(x, format = "f", digits = 3))
+    })
+    datatable(table_data, options = list(pageLength = 10, autoWidth = TRUE))
   })
   
   # scRNA-seq ----------------------
