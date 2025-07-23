@@ -153,12 +153,16 @@ shinyServer(function(input, output, session) {
   })
   
   observe({
+    gene_choices <- c("None" = "", unique(rownames(bulkseq_tpm)))
     updateSelectizeInput(session, "gene_expr_search_cohort1",
-                         choices = unique(rownames(bulkseq_tpm)),
-                         server = TRUE)
+                         choices   = gene_choices,
+                         selected  = "",
+                         server    = TRUE)
+    
     updateSelectizeInput(session, "gene_expr_search_cohort2",
-                         choices = unique(rownames(bulkseq_tpm)),
-                         server = TRUE)
+                         choices   = gene_choices,
+                         selected  = "",
+                         server    = TRUE)
   })
   
   observe({
@@ -979,7 +983,7 @@ shinyServer(function(input, output, session) {
     
     print(p)
   })
-
+  
   # output$ssgsea_violin <- renderPlot({
   #   results <- ssgsea_data()
   #   p <- create_violin_plot(results$wilcox_results, results$long_data)

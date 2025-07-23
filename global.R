@@ -419,9 +419,9 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   
   # Summary statistics
   cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals, na.rm = TRUE), 2),
-                           " (SD: ", round(sd(cohort1_vals, na.rm = TRUE), 2), ")")
+                            " (SD: ", round(sd(cohort1_vals, na.rm = TRUE), 2), ")")
   cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals, na.rm = TRUE), 2),
-                           " (SD: ", round(sd(cohort2_vals, na.rm = TRUE), 2), ")")
+                            " (SD: ", round(sd(cohort2_vals, na.rm = TRUE), 2), ")")
   
   return(list(
     test_name = test_name,
@@ -512,11 +512,11 @@ test_categorical_variable <- function(data, feature) {
     cohort2_total <- sum(cohort2_counts)
     
     cohort1_summary <- paste(names(cohort1_counts), 
-                            paste0(cohort1_counts, " (", round(cohort1_counts/cohort1_total*100, 1), "%)"),
-                            sep = ": ", collapse = "; ")
+                             paste0(cohort1_counts, " (", round(cohort1_counts/cohort1_total*100, 1), "%)"),
+                             sep = ": ", collapse = "; ")
     cohort2_summary <- paste(names(cohort2_counts),
-                            paste0(cohort2_counts, " (", round(cohort2_counts/cohort2_total*100, 1), "%)"),
-                            sep = ": ", collapse = "; ")
+                             paste0(cohort2_counts, " (", round(cohort2_counts/cohort2_total*100, 1), "%)"),
+                             sep = ": ", collapse = "; ")
   } else {
     cohort1_summary <- "Data unavailable"
     cohort2_summary <- "Data unavailable"
@@ -822,9 +822,9 @@ tpm_distr_survival <- function(gene_tpm, selected_clinical, cohorting_method) {
     
     # Create cohort
     cohort <- cut(gene_tpm,
-                 breaks = quartiles,
-                 labels = c("Q1", "Q2", "Q3", "Q4"),
-                 include.lowest = TRUE)
+                  breaks = quartiles,
+                  labels = c("Q1", "Q2", "Q3", "Q4"),
+                  include.lowest = TRUE)
     
   } else if (cohorting_method == "median") {
     # Cohort by median
@@ -834,7 +834,7 @@ tpm_distr_survival <- function(gene_tpm, selected_clinical, cohorting_method) {
   
   # Map cohort to clinical data
   cohort_df <- data.frame(Tumor_Sample_Barcode = all_samples,
-                         cohort = cohort)
+                          cohort = cohort)
   
   selected_clinical <- merge(selected_clinical, cohort_df, by = "Tumor_Sample_Barcode")
   
