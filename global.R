@@ -8,15 +8,14 @@ packages <- c("shiny", "shinydashboard", "shinyWidgets", "shinyjs",
 lapply(packages, library, character.only = TRUE)
 
 # Load data ------
-bulkseq <- readRDS("data/bulkseq_baseline.rds")
+# bulkseq <- readRDS("data/bulkseq_baseline.rds")
+bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline.rds")
 # clinical_data <- readRDS("data/clinical_data_cleaned.rds")
 # clinical_data <- readRDS("data/clinical_data_cleaned_new_surv.rds")
 clinical_data <- readRDS("data/clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
 # maf_data <- readRDS("data/maf_data_n937.rds")
-
-
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
 # ssgsea_result_c2 <- readRDS("data/ssgsea_result_c2.rds")
@@ -34,91 +33,93 @@ clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 
 # Helper functions -----------
-subset_by_gene_mutations <- function(clinical_data, include_genes = NULL, cohort, logic) {
-  if (is.null(include_genes)) return(clinical_data)
-  maf_data_table <- maf_data@data
-  
-  if (logic == "Or") {
-    matched <- maf_data_table[Hugo_Symbol %in% include_genes, unique(Tumor_Sample_Barcode)]
-    clinical_data <- if (cohort == "cohort1") {
-      clinical_data[clinical_data$Tumor_Sample_Barcode %in% matched,]
-    } else {
-      clinical_data[!clinical_data$Tumor_Sample_Barcode %in% matched,]
-    }
+get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
+  if (row_count == 0) {
+    # No rules, don't filter, return all IDs
+    return(unique(clinical_data$Tumor_Sample_Barcode))
   }
   
-  if (logic == "And") {
-    sample_gene_count <- maf_data_table %>%
-      filter(Hugo_Symbol %in% include_genes) %>%
-      distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>%
-      group_by(Tumor_Sample_Barcode) %>%
-      summarise(gene_count = n(), .cohorts = "drop")
-    
-    matched <- sample_gene_count %>%
-      filter(gene_count == length(include_genes)) %>%
-      pull(Tumor_Sample_Barcode)
-    
-    clinical_data <- if (cohort == "cohort1") {
-      clinical_data[clinical_data$Tumor_Sample_Barcode %in% matched,]
-    } else {
-      clinical_data[!clinical_data$Tumor_Sample_Barcode %in% matched,]
-    }
+  rows <- row_count
+  all_samples <- unique(clinical_data$Tumor_Sample_Barcode)
+  maf_table <- maf_data@data
+  
+  get_ids_for_rule <- function(gene, state) {
+    mutated_ids <- maf_table[Hugo_Symbol == gene, unique(Tumor_Sample_Barcode)]
+    if (state == "Mutated") return(mutated_ids)
+    return(setdiff(all_samples, mutated_ids))
   }
   
-  return(clinical_data)
+  result_ids <- NULL
+  for (i in 1:rows) {
+    gene <- input[[paste0("gene_mut_", i, "_", cohort_id)]]
+    state <- input[[paste0("state_mut_", i, "_", cohort_id)]]
+    logic <- input[[paste0("logic_mut_", i, "_", cohort_id)]]
+    
+    if (is.null(gene) || is.null(state)) next
+    
+    ids <- get_ids_for_rule(gene, state)
+    
+    if (is.null(result_ids)) {
+      result_ids <- ids
+    } else {
+      if (logic == "AND") {
+        result_ids <- intersect(result_ids, ids)
+      } else if (logic == "OR") {
+        result_ids <- union(result_ids, ids)
+      }
+    }
+    
+    if (logic == "END") break
+  }
+  
+  return(result_ids)
 }
 
-filter_by_gene_expression <- function(clinical_data, gene = NULL, threshold = NULL, cohort, threshold_type = "value") {
-  if (is.null(gene) || is.null(threshold) || is.na(threshold)) return(clinical_data)
-  if (!gene %in% rownames(bulkseq_tpm)) return(clinical_data)
+
+
+filter_by_gene_expression <- function(clinical_data, gene = NULL,
+                                      threshold_type = "value",
+                                      min_value = NULL, max_value = NULL,
+                                      min_percentile = 0, max_percentile = 100) {
+  if (is.null(gene) || !gene %in% rownames(bulkseq_tpm)) return(clinical_data)
   
-  gene_expr <- bulkseq_tpm[gene, ]  # Expression vector
+  gene_expr <- bulkseq_tpm[gene, ]
   names(gene_expr) <- colnames(bulkseq_tpm)
   
-  # Calculate threshold based on type
-  if (threshold_type == "percentile") {
-    cutoff <- quantile(gene_expr, probs = threshold / 100, na.rm = TRUE)
+  if (threshold_type == "value") {
+    if (is.null(min_value) || is.null(max_value) || is.na(min_value) || is.na(max_value)) return(clinical_data)
+    keep_ids <- names(gene_expr)[gene_expr >= min_value & gene_expr <= max_value]
   } else {
-    cutoff <- threshold
+    # Percentile range logic
+    lower_cutoff <- quantile(gene_expr, probs = min_percentile / 100, na.rm = TRUE)
+    upper_cutoff <- quantile(gene_expr, probs = max_percentile / 100, na.rm = TRUE)
+    keep_ids <- names(gene_expr)[gene_expr >= lower_cutoff & gene_expr <= upper_cutoff]
   }
   
-  # Apply filter based on cohort
-  if (cohort == "cohort1") {
-    keep_ids <- names(gene_expr)[gene_expr >= cutoff]
-  } else if (cohort == "cohort2") {
-    keep_ids <- names(gene_expr)[gene_expr < cutoff]
-  } else {
-    return(clinical_data)
-  }
-  
-  # Subset clinical data
   clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% keep_ids, ]
   return(clinical_data)
 }
 
-
-
-filter_by_survival <- function(clinical_data, surv_var, threshold_type, threshold_value, cohort) {
-  if (!(surv_var %in% colnames(clinical_data))) return(clinical_data)
+filter_by_survival <- function(clinical_data, surv_var, threshold_type,
+                               min_value = NULL, max_value = NULL,
+                               min_percentile = NULL, max_percentile = NULL) {
+  if (is.null(surv_var) || !(surv_var %in% colnames(clinical_data))) return(clinical_data)
   
   surv_data <- clinical_data[[surv_var]]
   
   if (threshold_type == "percentile") {
-    threshold <- quantile(surv_data, probs = threshold_value / 100, na.rm = TRUE)
+    min_thresh <- quantile(surv_data, probs = min_percentile / 100, na.rm = TRUE)
+    max_thresh <- quantile(surv_data, probs = max_percentile / 100, na.rm = TRUE)
   } else {
-    threshold <- threshold_value
+    min_thresh <- min_value
+    max_thresh <- max_value
   }
   
-  if (cohort == "cohort1") {
-    filtered <- clinical_data[surv_data >= threshold, ]
-  } else if (cohort == "cohort2") {
-    filtered <- clinical_data[surv_data < threshold, ]
-  } else {
-    filtered <- clinical_data
-  }
-  
+  filtered <- clinical_data[surv_data >= min_thresh & surv_data <= max_thresh, ]
+  cat("Here:", dim(filtered))
   return(filtered)
 }
+
 
 
 create_picker_input <- function(inputId, label, choices) {
@@ -137,6 +138,14 @@ create_picker_input <- function(inputId, label, choices) {
     multiple = TRUE,
     selected = "All"
   )
+}
+
+apply_filter <- function(data, column, values) {
+  if (!is.null(values) && length(values) > 0) {
+    data %>% filter(!!sym(column) %in% values)
+  } else {
+    data  # If nothing selected, keep all (default "All")
+  }
 }
 
 create_cohort_filters_ui <- function(cohort_id, category) {
@@ -229,118 +238,51 @@ get_cohort_filters <- function(input, cohort_id, category) {
 }
 
 filter_cohort_data <- function(data, filters) {
-  data <- as_tibble(data) # Ensures compatibility with dplyr functions
+  data <- as_tibble(data)  # For compatibility with dplyr pipes
   
   data <- data %>%
     # Demographic filters
+    apply_filter("Sex", filters$sex) %>%
+    apply_filter("Race", filters$race) %>%
     {
-      if (!is.null(filters$sex) && length(filters$sex) > 0)
-        filter(., Sex %in% filters$sex) else .
-    } %>%
-    {
-      if (!is.null(filters$race) && length(filters$race) > 0)
-        filter(., Race %in% filters$race) else .
-    } %>%
-    {
-      if (!is.null(filters$age) && length(filters$age) > 0) {
-        min_age <- min(.$Age, na.rm = TRUE)
-        max_age <- max(.$Age, na.rm = TRUE)
-        if (filters$age[1] != min_age | filters$age[2] != max_age)
-          filter(., Age >= filters$age[1], Age <= filters$age[2]) else .
-      } else .
+      if (!is.null(filters$age) && length(filters$age) == 2) {
+        filter(., Age >= filters$age[1], Age <= filters$age[2])
+      } else {
+        .
+      }
     } %>%
     
     # Clinical classification
-    {
-      if (!is.null(filters$stage) && length(filters$stage) > 0)
-        filter(., ISS %in% filters$stage) else .
-    } %>%
-    {
-      if (!is.null(filters$risk) && length(filters$risk) > 0)
-        filter(., IMWG_Risk_Class %in% filters$risk) else .
-    } %>%
-    {
-      if (!is.null(filters$cyto_risk) && length(filters$cyto_risk) > 0)
-        filter(., Skerget_Cytogenetic_High_Risk %in% filters$cyto_risk) else .
-    } %>%
+    apply_filter("ISS", filters$stage) %>%
+    apply_filter("IMWG_Risk_Class", filters$risk) %>%
+    apply_filter("Skerget_Cytogenetic_High_Risk", filters$cyto_risk) %>%
     
     # Subtypes
-    {
-      if (!is.null(filters$rna_subtype) && length(filters$rna_subtype) > 0)
-        filter(., Skerget_RNA_Subtype_Name %in% filters$rna_subtype) else .
-    } %>%
-    {
-      if (!is.null(filters$cna_subtype) && length(filters$cna_subtype) > 0)
-        filter(., Skerget_CNA_Subtype_Name %in% filters$cna_subtype) else .
-    } %>%
+    apply_filter("Skerget_RNA_Subtype_Name", filters$rna_subtype) %>%
+    apply_filter("Skerget_CNA_Subtype_Name", filters$cna_subtype) %>%
     
     # Treatment
-    {
-      if (!is.null(filters$triplet) && length(filters$triplet) > 0)
-        filter(., Triplet_First %in% filters$triplet) else .
-    } %>%
-    {
-      if (!is.null(filters$asct) && length(filters$asct) > 0)
-        filter(., ASCT_First %in% filters$asct) else .
-    } %>%
+    apply_filter("Triplet_First", filters$triplet) %>%
+    apply_filter("ASCT_First", filters$asct) %>%
     
     # Chromosomal abnormalities
-    {
-      if (!is.null(filters$q21_gain) && length(filters$q21_gain) > 0)
-        filter(., chr_1q21_gain %in% filters$q21_gain) else .
-    } %>%
-    {
-      if (!is.null(filters$q21_amp) && length(filters$q21_amp) > 0)
-        filter(., chr_1q21_amp %in% filters$q21_amp) else .
-    } %>%
-    {
-      if (!is.null(filters$del13q14) && length(filters$del13q14) > 0)
-        filter(., chr_13q14_del %in% filters$del13q14) else .
-    } %>%
-    {
-      if (!is.null(filters$del13q34) && length(filters$del13q34) > 0)
-        filter(., chr_13q34_del %in% filters$del13q34) else .
-    } %>%
-    {
-      if (!is.null(filters$del17p13) && length(filters$del17p13) > 0)
-        filter(., chr_17p13_del %in% filters$del17p13) else .
-    } %>%
-    {
-      if (!is.null(filters$diploidy) && length(filters$diploidy) > 0)
-        filter(., Hyperdiploidy %in% filters$diploidy) else .
-    } %>%
-    {
-      if (!is.null(filters$chromothripsis) && length(filters$chromothripsis) > 0)
-        filter(., chromothripsis %in% filters$chromothripsis) else .
-    } %>%
+    apply_filter("chr_1q21_gain", filters$q21_gain) %>%
+    apply_filter("chr_1q21_amp", filters$q21_amp) %>%
+    apply_filter("chr_13q14_del", filters$del13q14) %>%
+    apply_filter("chr_13q34_del", filters$del13q34) %>%
+    apply_filter("chr_17p13_del", filters$del17p13) %>%
+    apply_filter("Hyperdiploidy", filters$diploidy) %>%
+    apply_filter("chromothripsis", filters$chromothripsis) %>%
     
     # Translocations
-    {
-      if (!is.null(filters$t11_14) && length(filters$t11_14) > 0)
-        filter(., t_11_14 %in% filters$t11_14) else .
-    } %>%
-    {
-      if (!is.null(filters$t4_14) && length(filters$t4_14) > 0)
-        filter(., t_4_14 %in% filters$t4_14) else .
-    } %>%
+    apply_filter("t_11_14", filters$t11_14) %>%
+    apply_filter("t_4_14", filters$t4_14) %>%
     
     # Mutational markers
-    {
-      if (!is.null(filters$maf) && length(filters$maf) > 0)
-        filter(., MAF_MAFB %in% filters$maf) else .
-    } %>%
-    {
-      if (!is.null(filters$apobec) && length(filters$apobec) > 0)
-        filter(., APOBEC %in% filters$apobec) else .
-    } %>%
-    {
-      if (!is.null(filters$tp53) && length(filters$tp53) > 0)
-        filter(., TP53_Funct_Copies %in% filters$tp53) else .
-    } %>%
-    {
-      if (!is.null(filters$tp53_ns) && length(filters$tp53_ns) > 0)
-        filter(., TP53_NS_Mut_Count %in% filters$tp53_ns) else .
-    }
+    apply_filter("MAF_MAFB", filters$maf) %>%
+    apply_filter("APOBEC", filters$apobec) %>%
+    apply_filter("TP53_Funct_Copies", filters$tp53) %>%
+    apply_filter("TP53_NS_Mut_Count", filters$tp53_ns)
   
   return(data)
 }
@@ -401,11 +343,7 @@ create_categorical_plot <- function(data, feature, feature_label) {
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
-#' Create distribution plot data for continuous variables
-#' @param data The combined dataset
-#' @param feature The feature name to analyze
-#' @param feature_label The display label for the feature
-#' @return ggplot object
+# Create distribution plot data for continuous variables
 create_continuous_plot <- function(data, feature, feature_label) {
   data <- data %>%
     mutate(label = paste0("Cohort: ", cohort,
@@ -418,12 +356,7 @@ create_continuous_plot <- function(data, feature, feature_label) {
     theme_minimal()
 }
 
-#' Main function to create distribution plot
-#' @param data The combined dataset
-#' @param feature The feature name to analyze
-#' @param feature_label The display label for the feature
-#' @param continuous_features Vector of continuous feature names
-#' @return plotly object
+# Main function to create distribution plot
 create_distribution_plot <- function(data, feature, feature_label, continuous_features) {
   is_continuous <- feature %in% continuous_features
   
@@ -440,11 +373,7 @@ create_distribution_plot <- function(data, feature, feature_label, continuous_fe
 # =============================================================================
 # STATISTICAL TESTING FUNCTIONS
 # =============================================================================
-
-#' Perform statistical test for continuous variables
-#' @param cohort1_vals Vector of values for cohort 1
-#' @param cohort2_vals Vector of values for cohort 2
-#' @return List with test results
+# Perform statistical test for continuous variables
 test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   # Remove NA values
   cohort1_vals <- cohort1_vals[!is.na(cohort1_vals)]
@@ -503,10 +432,7 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   ))
 }
 
-#' Perform statistical test for categorical variables
-#' @param data The combined dataset
-#' @param feature The feature name to analyze
-#' @return List with test results
+# Perform statistical test for categorical variables
 test_categorical_variable <- function(data, feature) {
   contingency_table <- tryCatch(table(data$cohort, data[[feature]], useNA = "no"),
                                 error = function(e) NULL)
@@ -605,9 +531,7 @@ test_categorical_variable <- function(data, feature) {
   ))
 }
 
-#' Determine significance level from p-value
-#' @param p_value The p-value
-#' @return Significance indicator string
+# Determine significance level from p-value
 get_significance_level <- function(p_value) {
   if (is.na(p_value)) {
     return("NA")
@@ -622,9 +546,7 @@ get_significance_level <- function(p_value) {
   }
 }
 
-#' Format p-value for display
-#' @param p_value The p-value
-#' @return Formatted p-value string
+# Format p-value for display
 format_p_value <- function(p_value) {
   if (is.na(p_value)) {
     return("NA")
@@ -635,11 +557,7 @@ format_p_value <- function(p_value) {
   }
 }
 
-#' Create complete significance table
-#' @param data The combined dataset
-#' @param clinical_features Vector of clinical feature names to test
-#' @param continuous_features Vector of continuous feature names
-#' @return Data frame with significance results
+# Create complete significance table
 create_significance_table <- function(data, clinical_features, continuous_features) {
   results <- data.frame(
     Feature = character(),
@@ -704,12 +622,9 @@ create_significance_table <- function(data, clinical_features, continuous_featur
 # UTILITY FUNCTIONS
 # =============================================================================
 
-#' Get clinical feature choices for selectInput
-#' @param clinical_data The clinical dataset
-#' @param exclude_cols Vector of column names to exclude
-#' @return Vector of feature choices
+# Get clinical feature choices for selectInput
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
-  default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Age", "Tx",
+  default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",
                        "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", 
                        "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event")
   
@@ -722,10 +637,9 @@ get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   setdiff(colnames(clinical_data), exclude_cols)
 }
 
-#' Define continuous features (customize this for your dataset)
-#' @return Vector of continuous feature names
+# Define continuous features (customize this for your dataset)
 get_continuous_features <- function() {
-  c("BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
+  c("Age", "BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
 }
 
 

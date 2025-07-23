@@ -2,15 +2,186 @@
 shinyServer(function(input, output, session) {
   shinyjs::useShinyjs()
   
-  # Load available genes for selection
+  # Mutational Profile. Store rule row counters
+  mut_row_counter <- reactiveValues(cohort1 = 0, cohort2 = 0)
+  mut_rule_cache <- reactiveValues(cohort1 = list(), cohort2 = list())
+  
+  # Disable remove when no rules exist
   observe({
-    gene_choices <- unique(maf_data@data$Hugo_Symbol)
-    updateSelectizeInput(session, "gene_include_filter", choices = gene_choices, server = TRUE)
+    toggleState("remove_mut_row_cohort1", condition = mut_row_counter$cohort1 > 0)
+    toggleState("remove_mut_row_cohort2", condition = mut_row_counter$cohort2 > 0)
+  })
+  
+  # Add new rows on click
+  observeEvent(input$add_mut_row_cohort1, {
+    isolate({
+      mut_rule_cache$cohort1 <- lapply(1:mut_row_counter$cohort1, function(i) {
+        list(
+          gene = input[[paste0("gene_mut_", i, "_cohort1")]],
+          state = input[[paste0("state_mut_", i, "_cohort1")]],
+          logic = input[[paste0("logic_mut_", i, "_cohort1")]]
+        )
+      })
+    })
+    mut_row_counter$cohort1 <- mut_row_counter$cohort1 + 1
+  })
+  
+  
+  # Remove new rows
+  observeEvent(input$remove_mut_row_cohort1, {
+    if (mut_row_counter$cohort1 > 0) {
+      # Save inputs from remaining rows before decrement
+      isolate({
+        mut_rule_cache$cohort1 <- lapply(1:(mut_row_counter$cohort1 - 1), function(i) {
+          list(
+            gene = input[[paste0("gene_mut_", i, "_cohort1")]],
+            state = input[[paste0("state_mut_", i, "_cohort1")]],
+            logic = input[[paste0("logic_mut_", i, "_cohort1")]]
+          )
+        })
+      })
+      mut_row_counter$cohort1 <- mut_row_counter$cohort1 - 1
+    }
+  })
+  
+  
+  observeEvent(input$add_mut_row_cohort2, {
+    isolate({
+      mut_rule_cache$cohort2 <- lapply(1:mut_row_counter$cohort2, function(i) {
+        list(
+          gene = input[[paste0("gene_mut_", i, "_cohort2")]],
+          state = input[[paste0("state_mut_", i, "_cohort2")]],
+          logic = input[[paste0("logic_mut_", i, "_cohort2")]]
+        )
+      })
+    })
+    mut_row_counter$cohort2 <- mut_row_counter$cohort2 + 1
+  })
+  
+  
+  observeEvent(input$remove_mut_row_cohort2, {
+    if (mut_row_counter$cohort2 > 0) {
+      isolate({
+        mut_rule_cache$cohort2 <- lapply(1:(mut_row_counter$cohort2 - 1), function(i) {
+          list(
+            gene = input[[paste0("gene_mut_", i, "_cohort2")]],
+            state = input[[paste0("state_mut_", i, "_cohort2")]],
+            logic = input[[paste0("logic_mut_", i, "_cohort2")]]
+          )
+        })
+      })
+      
+      mut_row_counter$cohort2 <- mut_row_counter$cohort2 - 1
+    }
+  })
+  
+  # Render dynamic rule UI
+  output$mutation_rules_cohort1 <- renderUI({
+    if (mut_row_counter$cohort1 == 0) return(NULL)
+    
+    lapply(1:mut_row_counter$cohort1, function(i) {
+      cached <- if (length(mut_rule_cache$cohort1) >= i) mut_rule_cache$cohort1[[i]] else NULL
+      
+      gene_val <- if (!is.null(cached)) cached$gene else NULL
+      state_val <- if (!is.null(cached)) cached$state else "Mutated"
+      logic_val <- if (!is.null(cached)) cached$logic else "END"
+      
+      div(
+        selectInput(
+          paste0("logic_mut_", i, "_cohort1"),
+          label = tags$div(style = "font-size: 12px;", "Logic"),
+          choices = c("AND", "OR", "END"),
+          selected = logic_val,
+          width = "100%"
+        ),
+        selectInput(
+          paste0("state_mut_", i, "_cohort1"),
+          label = tags$div(style = "font-size: 12px;", "State"),
+          choices = c("Mutated", "Not Mutated"),
+          selected = state_val,
+          width = "100%"
+        ),
+        selectizeInput(
+          paste0("gene_mut_", i, "_cohort1"),
+          label = tags$div(style = "font-size: 12px;", "Gene"),
+          choices = unique(maf_data@data$Hugo_Symbol),
+          selected = gene_val,
+          options = list(maxOptions = 100),
+          width = "100%"
+        ),
+        br()
+      )
+    })
+  })
+  
+  output$mutation_rules_cohort2 <- renderUI({
+    if (mut_row_counter$cohort2 == 0) return(NULL)
+    
+    lapply(1:mut_row_counter$cohort2, function(i) {
+      cached <- if (length(mut_rule_cache$cohort2) >= i) mut_rule_cache$cohort2[[i]] else NULL
+      
+      gene_val <- if (!is.null(cached)) cached$gene else NULL
+      state_val <- if (!is.null(cached)) cached$state else "Mutated"
+      logic_val <- if (!is.null(cached)) cached$logic else "END"
+      
+      div(
+        selectInput(
+          paste0("logic_mut_", i, "_cohort2"),
+          label = tags$div(style = "font-size: 12px;", "Logic"),
+          choices = c("AND", "OR", "END"),
+          selected = logic_val,
+          width = "100%"
+        ),
+        selectInput(
+          paste0("state_mut_", i, "_cohort2"),
+          label = tags$div(style = "font-size: 12px;", "State"),
+          choices = c("Mutated", "Not Mutated"),
+          selected = state_val,
+          width = "100%"
+        ),
+        selectizeInput(
+          paste0("gene_mut_", i, "_cohort2"),
+          label = tags$div(style = "font-size: 12px;", "Gene"),
+          choices = unique(maf_data@data$Hugo_Symbol),
+          selected = gene_val,
+          options = list(maxOptions = 100),
+          width = "100%"
+        ),
+        br()
+      )
+    })
   })
   
   observe({
-    gene_choices <- unique(rownames(bulkseq_tpm))
-    updateSelectizeInput(session, "gene_expr_search", choices = gene_choices, server = TRUE)
+    updateSelectizeInput(session, "gene_expr_search_cohort1",
+                         choices = unique(rownames(bulkseq_tpm)),
+                         server = TRUE)
+    updateSelectizeInput(session, "gene_expr_search_cohort2",
+                         choices = unique(rownames(bulkseq_tpm)),
+                         server = TRUE)
+  })
+  
+  observe({
+    surv_var <- input$surv_variable_cohort1
+    if (!is.null(surv_var) && surv_var %in% names(clinical_data)) {
+      vals <- clinical_data[[surv_var]]
+      min_val <- min(vals, na.rm = TRUE)
+      max_val <- max(vals, na.rm = TRUE)
+      
+      updateNumericInput(session, "surv_threshold_min_value_cohort1", value = min_val)
+      updateNumericInput(session, "surv_threshold_max_value_cohort1", value = max_val)
+    }
+  })
+  observe({
+    surv_var <- input$surv_variable_cohort2
+    if (!is.null(surv_var) && surv_var %in% names(clinical_data)) {
+      vals <- clinical_data[[surv_var]]
+      min_val <- min(vals, na.rm = TRUE)
+      max_val <- max(vals, na.rm = TRUE)
+      
+      updateNumericInput(session, "surv_threshold_min_value_cohort2", value = min_val)
+      updateNumericInput(session, "surv_threshold_max_value_cohort2", value = max_val)
+    }
   })
   
   # Filters interface
@@ -38,34 +209,57 @@ shinyServer(function(input, output, session) {
     )
   })
   
+  
   filtered_data_cohort1 <- eventReactive(input$apply_filters, {
-    clinical_filtered <- filter_cohort_data(clinical_data, cohort1_filters())
+    clinical_filtered <- filter_cohort_data(copy(clinical_data), cohort1_filters())
     clinical_error <- copy(clinical_filtered)
     
-    include_genes <- isolate(input$gene_include_filter)
-    mut_logic <- isolate(input$mut_logic)
-    clinical_filtered <- subset_by_gene_mutations(clinical_filtered, include_genes, "cohort1", mut_logic)
+    # Gene mutation filter
+    mutated_ids_cohort1 <- get_mutation_filtered_ids(isolate(input), "cohort1", mut_row_counter$cohort1)
+    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% mutated_ids_cohort1, ]
     
-    if (nrow(clinical_filtered) == 0) {
-      showNotification("No patients in Cohort 1 match the selected genes.", type = "error")
-      return(clinical_error)
+    # Gene expression filter
+    clinical_filtered <- filter_by_gene_expression(
+      clinical_data = clinical_filtered,
+      gene = isolate(input$gene_expr_search_cohort1),
+      threshold_type = isolate(input$expr_threshold_type_cohort1),
+      min_value = isolate(input$gene_expr_min_cohort1),
+      max_value = isolate(input$gene_expr_max_cohort1),
+      min_percentile = isolate(input$gene_expr_percentile_min_cohort1),
+      max_percentile = isolate(input$gene_expr_percentile_max_cohort1)
+    )
+    
+    # Survival filter
+    if (isTRUE(isolate(input$enable_survival_filter_cohort1))) {
+      threshold_type <- isolate(input$surv_threshold_type_cohort1)
+      
+      if (threshold_type == "percentile") {
+        clinical_filtered <- filter_by_survival(
+          clinical_filtered,
+          surv_var = isolate(input$surv_variable_cohort1),
+          threshold_type = "percentile",
+          min_percentile = isolate(input$surv_threshold_min_percentile_cohort1),
+          max_percentile = isolate(input$surv_threshold_max_percentile_cohort1)
+        )
+      } else if (threshold_type == "value") {
+        clinical_filtered <- filter_by_survival(
+          clinical_filtered,
+          surv_var = isolate(input$surv_variable_cohort1),
+          threshold_type = "value",
+          min_value = isolate(input$surv_threshold_min_value_cohort1),
+          max_value = isolate(input$surv_threshold_max_value_cohort1)
+        )
+      }
     }
     
-    gene_selected <- isolate(input$gene_expr_search)
-    threshold <- isolate(input$gene_expr_threshold)
-    threshold_type <- isolate(input$expr_threshold_type)
-    clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "cohort1", threshold_type)
-    
-    if (isTRUE(isolate(input$enable_survival_filter))) {
-      surv_variable <- isolate(input$surv_variable)
-      surv_type <- isolate(input$surv_threshold_type)
-      surv_threshold <- if (surv_type == "value") isolate(input$surv_threshold_value) else isolate(input$surv_threshold_percentile)
-      
-      clinical_filtered <- filter_by_survival(clinical_filtered, surv_variable, surv_type, surv_threshold, "cohort1")
+    if (nrow(clinical_filtered) == 0) {
+      showNotification("No patients in Cohort 1 match the filters.", type = "error")
+      return(clinical_error)
     }
     
     return(clinical_filtered)
   })
+  
   
   # Cohort 2
   output$age_filter_cohort2 <- renderUI({
@@ -83,33 +277,57 @@ shinyServer(function(input, output, session) {
   })
   
   filtered_data_cohort2 <- eventReactive(input$apply_filters, {
-    clinical_filtered <- filter_cohort_data(clinical_data, cohort2_filters())
+    clinical_filtered <- filter_cohort_data(copy(clinical_data), cohort2_filters())
     clinical_error <- copy(clinical_filtered)
     
-    include_genes <- isolate(input$gene_include_filter)
-    mut_logic <- isolate(input$mut_logic)
-    clinical_filtered <- subset_by_gene_mutations(clinical_filtered, include_genes, "cohort2", mut_logic)
+    # Gene mutation filter
+    mutated_ids_cohort2 <- get_mutation_filtered_ids(isolate(input), "cohort2", mut_row_counter$cohort2)
+    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% mutated_ids_cohort2, ]
     
-    if (nrow(clinical_filtered) == 0) {
-      showNotification("No patients in Cohort 2 match the selected genes.", type = "error")
-      return(clinical_error)
+    # Gene expression filter
+    clinical_filtered <- filter_by_gene_expression(
+      clinical_data = clinical_filtered,
+      gene = isolate(input$gene_expr_search_cohort2),
+      threshold_type = isolate(input$expr_threshold_type_cohort2),
+      min_value = isolate(input$gene_expr_min_cohort2),
+      max_value = isolate(input$gene_expr_max_cohort2),
+      min_percentile = isolate(input$gene_expr_percentile_min_cohort2),
+      max_percentile = isolate(input$gene_expr_percentile_max_cohort2)
+    )
+    
+    # Survival filter
+    if (isTRUE(isolate(input$enable_survival_filter_cohort2))) {
+      threshold_type <- isolate(input$surv_threshold_type_cohort2)
+      
+      if (threshold_type == "percentile") {
+        clinical_filtered <- filter_by_survival(
+          clinical_filtered,
+          surv_var = isolate(input$surv_variable_cohort2),
+          threshold_type = "percentile",
+          min_percentile = isolate(input$surv_threshold_min_percentile_cohort2),
+          max_percentile = isolate(input$surv_threshold_max_percentile_cohort2)
+        )
+      } else if (threshold_type == "value") {
+        clinical_filtered <- filter_by_survival(
+          clinical_filtered,
+          surv_var = isolate(input$surv_variable_cohort2),
+          threshold_type = "value",
+          min_value = isolate(input$surv_threshold_min_value_cohort2),
+          max_value = isolate(input$surv_threshold_max_value_cohort2)
+        )
+      }
     }
     
-    gene_selected <- isolate(input$gene_expr_search)
-    threshold <- isolate(input$gene_expr_threshold)
-    threshold_type <- isolate(input$expr_threshold_type)
-    clinical_filtered <- filter_by_gene_expression(clinical_filtered, gene_selected, threshold, "cohort2", threshold_type)
     
-    if (isTRUE(isolate(input$enable_survival_filter))) {
-      surv_variable <- isolate(input$surv_variable)
-      surv_type <- isolate(input$surv_threshold_type)
-      surv_threshold <- if (surv_type == "value") isolate(input$surv_threshold_value) else isolate(input$surv_threshold_percentile)
-      
-      clinical_filtered <- filter_by_survival(clinical_filtered, surv_variable, surv_type, surv_threshold, "cohort2")
+    
+    if (nrow(clinical_filtered) == 0) {
+      showNotification("No patients in Cohort 2 match the filters.", type = "error")
+      return(clinical_error)
     }
     
     return(clinical_filtered)
   })
+  
   
   
   # filtered_data that stores combined clinical data and cohort1, cohort2 data
@@ -215,6 +433,16 @@ shinyServer(function(input, output, session) {
     
     HTML(text)
   })
+  
+  # Download filtered clinical data
+  output$download_clinical <- downloadHandler(
+    filename = function() {
+      paste0("Filtered_Clinical_Data_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write.csv(filtered_data$combined, file, row.names = FALSE)
+    }
+  )
   
   # MAF
   output$mafNum <- renderUI({
@@ -706,6 +934,17 @@ shinyServer(function(input, output, session) {
     datatable(degs, options = list(pageLength = 10, autoWidth = TRUE))
   })
   
+  output$download_DEGs <- downloadHandler(
+    filename = function() {
+      paste0("DEGs_table_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      degs <- filtered_degs() %>%
+        dplyr::select(baseMean, log2FoldChange, padj, significant)
+      
+      write.csv(degs, file)
+    }
+  )
   
   # BulkRNA-seq Enrichment Analysis -----------
   ssgsea_data <- reactive({

@@ -221,10 +221,11 @@ NDMM_BM_clinical <- readRDS("orig_clinical/NDMM_BM_clinical.rds")
 ### Mutation subsetting
 ##########
 maf <- maf_data@data
-include_genes <- c('KRAS', 'NLRP10', 'NRAS')
+include_genes <- c('KRAS', 'NRAS')
 
 # or
 uniqueN(maf[Hugo_Symbol %in% include_genes, Tumor_Sample_Barcode])
+dim(clinical_data[clinical_data$Tumor_Sample_Barcode %in% unique(maf[Hugo_Symbol %in% include_genes, Tumor_Sample_Barcode]),])
 
 # And
 # length(intersect(unique(maf[Hugo_Symbol == 'KRAS', Tumor_Sample_Barcode]), unique(maf[Hugo_Symbol == 'NRAS', Tumor_Sample_Barcode])))
@@ -239,7 +240,7 @@ samples_with_all_genes <- sample_gene_count %>%
   pull(Tumor_Sample_Barcode)
 
 length(samples_with_all_genes)
-tmp <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% samples_with_all_genes]
+tmp <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% samples_with_all_genes,]
 dim(tmp)[1]
 
 
@@ -341,10 +342,187 @@ table(clin_old$Race, useNA = "always")
 # "1q21_amp", "13q14_del", "13q34_del", "17p13_del", "1q21_gain", "t(11;14)", "t(4;14)"
 # Chromothripsis, "APOBEC", "MAF/MAFB"
 
-# Add columns to new clinical data
+##########
+# Prepare for new CE version n=1141. new MAF
+##########
+clin <- read.csv("/Users/flynnzhang/CMU/MMRF/MMRF_WZ_dataset/Other_Clinical/CE_baseline_clinical_n1141_num.txt",
+                 sep = "\t")
+clin <- read.csv("/Users/flynnzhang/CMU/MMRF/MMRF_WZ_dataset/Other_Clinical/CE_baseline_clinical_n1141_cat.txt",
+                 sep = "\t")
+
+# # To rds
+# saveRDS(clin, "/Users/flynnzhang/CMU/MMRF/RShiny/MMRF_CoMMpass_Explorer/data/clinical_data_n1411.rds")
+# clin <- readRDS("/Users/flynnzhang/CMU/MMRF/RShiny/MMRF_CoMMpass_Explorer/data/clinical_data_n1411.rds")
+
+# # To csv
+clin <- readRDS("/Users/flynnzhang/CMU/MMRF/RShiny/MMRF_CoMMpass_Explorer/data/clinical_data_n1411.rds")
+
+write.table(clin, "/Users/flynnzhang/CMU/MMRF/RShiny/MMRF_CoMMpass_Explorer/data/clinical_data_n1411.txt",
+            sep = "\t", quote = F, row.names = FALSE)
+
+clin <- read.table("/Users/flynnzhang/CMU/MMRF/RShiny/MMRF_CoMMpass_Explorer/data/clinical_data_CE_n1411.txt", sep="\t")
+
+##########
+# New MAF
+library(maftools)
+library(dplyr)
+library(tidyr)
+maf_data <- read.maf(maf = "/Users/flynnzhang/CMU/MMRF/MMRF_WZ_dataset/maf/MMRF_CoMMpass_IA24_All_Canonical_Variants_MAF_Files/MMRF_CoMMpass_IA24_exome_vcfmerger2_All_Canonical_Variants.maf")
+clinical_df <- maf_data@clinical.data
+head(clinical_df$Tumor_Sample_Barcode)
+
+# Split the Tumor_Sample_Barcode
+clinical_df <- clinical_df %>%
+  separate(Tumor_Sample_Barcode, 
+           into = c("Sample_Prefix", "public_id", "Visit", "Sample_Source", "CD_Marker", "Timepoint"), 
+           sep = "_") %>%
+  mutate(
+    public_id = paste(Sample_Prefix, public_id, sep = "_"),
+    Sample_type = paste(Sample_Source, CD_Marker, sep = "_")
+  ) %>%
+  mutate(public_id = paste(public_id, Visit, sep = "_")) %>%
+  dplyr::select(-Sample_Prefix, -Sample_Source, -CD_Marker)
+
+# Keep BM, visit 1
+filtered_clinical <- clinical_df %>%
+  filter(Sample_type == "BM_CD138pos", Visit == 1)
+
+# List of matching Tumor_Sample_Barcodes
+filtered_barcodes <- paste0(filtered_clinical$public_id, "_", 
+                            "BM_CD138pos_", 
+                            filtered_clinical$Timepoint)
+
+filtered_maf <- subsetMaf(maf = maf_data, tsb = filtered_barcodes)
+
+# Replace clinical.data
+maf_data@clinical.data <- filtered_clinical
+
+# Only keep public_id in Tumor_Sample_Barcode
+filtered_maf@data <- filtered_maf@data %>%
+  mutate(Tumor_Sample_Barcode = gsub("^((MMRF_\\d+_\\d+)).*", "\\1", Tumor_Sample_Barcode))
+
+filtered_maf@maf.silent <- filtered_maf@maf.silent %>%
+  mutate(Tumor_Sample_Barcode = gsub("^((MMRF_\\d+_\\d+)).*", "\\1", Tumor_Sample_Barcode))
+
+filtered_clinical <- filtered_clinical %>%
+  rename(Tumor_Sample_Barcode = public_id)
+
+filtered_maf@clinical.data <- as.data.table(filtered_clinical)
+
+tmp <- read.maf(
+  maf = filtered_maf@data,
+  clinicalData = filtered_maf@clinical.data
+)
+
+tmp <- read.maf(
+  maf = filtered_maf@data,
+  clinicalData = filtered_maf@clinical.data,
+  useAll = TRUE
+)
+
+# saveRDS(tmp, "data/maf_data_n937.rds")
+
+oncoplot(maf = tmp, top = 20)
+oncoplot(maf = tmp, top = 20, clinicalFeatures = "Disease_Type")
+plotVariantType(maf = tmp)
+somaticInteractions(maf = tmp, top = 20)
+lollipopPlot(maf = tmp, gene = "KRAS")
+drivers <- oncodrive(maf = tmp)
+plotOncodrive(res = drivers, fdrCutOff = 0.05)
+
+# ?? nonsense missing
+full_maf <- read.maf(
+  maf = rbind(filtered_maf@data, filtered_maf@maf.silent, fill = TRUE),
+  clinicalData = filtered_maf@clinical.data,
+  useAll = TRUE
+)
 
 
 
+###### Filtering
+library(maftools)
+library(dplyr)
 
+# Load your MAF data
+maf_data <- readRDS("data/maf_data_n937.rds")
+
+# Define the problematic gene family prefixes
+problematic_prefixes <- c(
+  "MUC",     # Mucin family - highly polymorphic, repetitive regions
+  "TTN",     # Titin - extremely long gene that often appears mutated
+  "IGHV",    # Immunoglobulin heavy variable chains
+  "IGLV",    # Immunoglobulin lambda variable chains
+  "IGKV",    # Immunoglobulin kappa variable chains
+  "IGH",     # Other immunoglobulin heavy chain genes
+  "IGL",     # Other immunoglobulin lambda chain genes
+  "IGK",     # Other immunoglobulin kappa chain genes
+  "HLA-",    # Human leukocyte antigen - highly polymorphic
+  "OR",      # Olfactory receptors - large family with high variability
+  "PCDH",    # Protocadherins - repetitive structure
+  "NBPF",    # Neuroblastoma breakpoint family - repetitive
+  "AHNAK",   # Very large gene
+  "SSPO",    # SCO-spondin - large gene
+  "KRTAP",   # Keratin associated proteins
+  "POTEH",   # POTE ankyrin domain family
+  "ANKRD",   # Ankyrin repeat domain
+  "ZNF",     # Zinc finger proteins - large family
+  "GOLGA",   # Golgin subfamily A - often artifacts
+  "USH2A",   # Usher syndrome 2A - large gene
+  "RYR",     # Ryanodine receptors - large genes
+  "FLG",     # Filaggrin - repetitive
+  "OBSCN",   # Obscurin - large gene
+  "PCLO",    # Piccolo - very large gene
+  "DNAH"     # Dynein heavy chains - large genes
+)
+
+# Get all genes in the MAF object
+all_genes <- maf_data@gene.summary$Hugo_Symbol
+
+# Create a pattern to match problematic gene families
+pattern <- paste0("^(", paste(problematic_prefixes, collapse="|"), ")")
+
+# Identify genes to exclude
+genes_to_exclude <- grep(pattern, all_genes, value=TRUE)
+
+# Print the genes that will be excluded
+cat("Excluding", length(genes_to_exclude), "genes from problematic families:\n")
+print(head(genes_to_exclude, 20))  # Print first 20 as an example
+cat("...\n")
+
+# Get a list of genes to KEEP (all genes EXCEPT the problematic ones)
+genes_to_keep <- setdiff(all_genes, genes_to_exclude)
+
+# Filter the MAF object to keep only non-problematic genes
+maf_filtered <- subsetMaf(maf = maf_data,
+                          genes = genes_to_keep,
+                          mafObj = TRUE)
+
+# Check how many genes were in the original vs filtered dataset
+cat("\nOriginal MAF data had", nrow(maf_data@gene.summary), "genes\n")
+cat("Filtered MAF data has", nrow(maf_filtered@gene.summary), "genes\n")
+
+# Generate a cleaner oncoplot with the filtered data
+oncoplot(maf = maf_filtered, 
+         top = 50,    # Show top 20 genes
+         showTumorSampleBarcodes = FALSE)
+
+##### Use new bulkRNA-seq data (count, tpm)
+bulkseq_tpm <- read.csv("~/Downloads/CoMMpass_bulkRNAseq_geneLevel_tpm_matrix.txt", sep="\t", row.names = 1)
+bulkseq <- read.csv("~/Downloads/CoMMpass_bulkRNAseq_geneLevel_count_matrix.txt", sep="\t", row.names = 1)
+
+saveRDS(bulkseq_tpm, "data/bulkseq_tpm_baseline_n767.rds")
+saveRDS(bulkseq, "data/bulkseq_baseline_n767.rds")
+### Didn't work beacause not sure why count matrix isn't integers.
+
+##### Update the old bulkRNA-seq data. filter out unwanted genes
+counts <- readRDS("data/bulkseq_baseline.rds")
+valid_genes <- !grepl("^\\.|^[0-9]+$", rownames(counts))
+counts <- counts[valid_genes, ]
+# Define filtering patterns
+bias_genes <- grepl("^(IG[HKL]|TR[ABDGV]|MT\\-)", rownames(counts))
+# Remove these genes
+counts_clean <- counts[!bias_genes, ]
+# Save
+saveRDS(counts_clean, "data/bulkseq_baseline_cleaned.rds")
 
 
