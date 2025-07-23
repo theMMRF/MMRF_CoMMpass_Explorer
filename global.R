@@ -81,7 +81,7 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
                                       threshold_type = "value",
                                       min_value = NULL, max_value = NULL,
                                       min_percentile = 0, max_percentile = 100) {
-  if (is.null(gene) || !gene %in% rownames(bulkseq_tpm)) return(clinical_data)
+  if (is.null(gene) || gene == "" || !gene %in% rownames(bulkseq_tpm)) return(clinical_data)
   
   gene_expr <- bulkseq_tpm[gene, ]
   names(gene_expr) <- colnames(bulkseq_tpm)
