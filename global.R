@@ -8,24 +8,13 @@ packages <- c("shiny", "shinydashboard", "shinyWidgets", "shinyjs",
 lapply(packages, library, character.only = TRUE)
 
 # Load data ------
-# bulkseq <- readRDS("data/bulkseq_baseline.rds")
 bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline.rds")
-# clinical_data <- readRDS("data/clinical_data_cleaned.rds")
-# clinical_data <- readRDS("data/clinical_data_cleaned_new_surv.rds")
 clinical_data <- readRDS("data/clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
-# maf_data <- readRDS("data/maf_data_n937.rds")
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
-# ssgsea_result_c2 <- readRDS("data/ssgsea_result_c2.rds")
-# bulkseq <- readRDS("../../data/commpass_explorer/bulkseq_baseline.rds")
-# bulkseq_tpm <- readRDS("../../data/commpass_explorer/bulkseq_tpm_baseline.rds")
-# clinical_data <- readRDS("../../data/commpass_explorer/clinical_data_cleaned.rds")
-# maf_data <- readRDS("../../data/commpass_explorer/maf_data.rds")
-# sc_meta <- readRDS("../../data/commpass_explorer/scRNAseq_metadata.rds")
-# ssgsea_result_ca <- readRDS("../../data/commpass_explorer/ssgsea_result_ca.rds")
-# ssgsea_result_c2 <- readRDS("../../data/commpass_explorer/ssgsea_result_c2.rds")
+
 
 clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
@@ -370,9 +359,8 @@ create_distribution_plot <- function(data, feature, feature_label, continuous_fe
     layout(hovermode = "x")
 }
 
-# =============================================================================
-# STATISTICAL TESTING FUNCTIONS
-# =============================================================================
+# -------------------------------------
+# Statistical testing
 # Perform statistical test for continuous variables
 test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   # Remove NA values
@@ -618,10 +606,8 @@ create_significance_table <- function(data, clinical_features, continuous_featur
   return(display_table)
 }
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
+# ------------------
+# Utils
 # Get clinical feature choices for selectInput
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",

@@ -407,13 +407,14 @@ shinyServer(function(input, output, session) {
     
     # Intersect
     inter_samples <- intersect(clinical_combined$public_id, sc_meta$public_id)
-    num_sample <- intersect(clinical_data$Tumor_Sample_Barcode, colnames(sc_meta))
+    num_sample <- length(intersect(clinical_data$public_id, sc_meta$immune_analysis_id))
     clinical_combined <- clinical_combined[clinical_combined$public_id %in% inter_samples,]
     
     cohort_info <- clinical_combined %>% 
       distinct(public_id, cohort) # Select only unique combinations of public_id and cohort from the clinical_combined
     
     list(
+      num_sample = num_sample,
       inter_samples = inter_samples,
       clinical_combined = clinical_combined,
       cohort_info = cohort_info
@@ -486,7 +487,7 @@ shinyServer(function(input, output, session) {
   output$scNum <- renderUI({
     sc_clinical <- preprocessed_sc_meta()$cohort_info
     inter_samples <- preprocessed_sc_meta()$inter_samples
-    num_total <- length(inter_samples)
+    num_total <- preprocessed_sc_meta()$num_sample
     num_cohort1 <- nrow(sc_clinical[sc_clinical$cohort == "Cohort1", ])
     num_cohort2 <- nrow(sc_clinical[sc_clinical$cohort == "Cohort2", ])
     text <- sprintf(
@@ -532,7 +533,7 @@ shinyServer(function(input, output, session) {
     
     ggsurvplot(fit_combined, data = combined_clinical,
                # Core aesthetics
-               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Cohort1, teal for Cohort2)
+               palette = c("#E41A1C", "#4DBBD5"),  #red for Cohort1, teal for Cohort2
                linetype = c("solid", "solid"),
                size = 1,           # Line thickness
                
@@ -582,7 +583,7 @@ shinyServer(function(input, output, session) {
     
     ggsurvplot(fit_combined, data = combined_clinical,
                # Core aesthetics
-               palette = c("#E41A1C", "#4DBBD5"),  # Professional color scheme (red for Cohort1, teal for Cohort2)
+               palette = c("#E41A1C", "#4DBBD5"),  # red for Cohort1, teal for Cohort2
                linetype = c("solid", "solid"),
                size = 1,           # Line thickness
                
@@ -704,20 +705,6 @@ shinyServer(function(input, output, session) {
       lollipopPlot(maf = filtered_data[[cohort_selected]], AACol = "HGVSp", gene = input$gene_search_lollipop_g2)
     }
   })
-  
-  
-  # # Draw Ti/Tv ratio plot
-  # output$titvPlot <- renderPlot({
-  #   maf_titv <- titv(maf = filtered_data$selected_maf, plot = FALSE, useSyn = TRUE)
-  #   plotTiTv(res = maf_titv)
-  # })
-  
-  # # Draw Variant allele frequency plot
-  # output$vafPlot <- renderPlot({
-  #   cohort_selected <- filtered_data$cohort_selected
-  #   cohort_selected <- paste0(cohort_selected, "_maf")
-  #   plotVaf(maf = filtered_data[[cohort_selected]], vafCol = 'i_TumorVAF_WU')
-  # })
   
   # Draw somatic interaction plot
   output$interactionPlot_g1 <- renderPlot({
@@ -867,38 +854,7 @@ shinyServer(function(input, output, session) {
     
     tpm_distr_survival(gene_tpm, selected_clinical, cohorting_method)
   })
-  
-  # BulkRNA-seq DESeq2 and Heatmap ----------
-  # # Heatmap for selected genes in bulkRNAseq
-  # output$bulkHeat <- renderPlot({
-  #   req(input$gene_search_bulk_heat)
-  #   # filtered_data$combined has already been sorted by "cohort" (selected, unselected)
-  #   clinical_sorted <- filtered_data$combined[filtered_data$combined$Tumor_Sample_Barcode %in% colnames(bulkseq_tpm),]
-  #   
-  #   genes <- input$gene_search_bulk_heat
-  #   
-  #   # Get expression data of checkpoints
-  #   checkpoint_data <- bulkseq_tpm[genes,]
-  #   # log2 transfromation for better visualization
-  #   checkpoint_data_log <- log2(checkpoint_data + 1)
-  #   checkpoint_data_log <- checkpoint_data_log[, clinical_sorted$Tumor_Sample_Barcode]
-  #   
-  #   # Calculate the percentage of samples expressing each gene
-  #   gene_expression_percentage <- rowMeans(checkpoint_data > 0) * 100
-  #   rownames(checkpoint_data_log) <- paste0(genes, " (", round(gene_expression_percentage, 2), "%)")
-  #   
-  #   annotation_col <- data.frame(Cohort = clinical_sorted$cohort)
-  #   row.names(annotation_col) <- clinical_sorted$Tumor_Sample_Barcode
-  # 
-  #   # Plot the heatmap
-  #   pheatmap(checkpoint_data_log, 
-  #            scale = "row",  # Normalize
-  #            color = colorRampPalette(c("blue", "white", "red"))(50),
-  #            main = "Gene Expression Heatmap",
-  #            show_colnames = FALSE,
-  #            # cluster_cols = FALSE, # set to TRUE If we want to order by "cohort"
-  #            annotation_col = annotation_col)
-  # })
+
   # Reactive value to hold DESeq2 results
   deseq2_results <- reactiveValues(result = NULL)
   
@@ -983,12 +939,6 @@ shinyServer(function(input, output, session) {
     
     print(p)
   })
-  
-  # output$ssgsea_violin <- renderPlot({
-  #   results <- ssgsea_data()
-  #   p <- create_violin_plot(results$wilcox_results, results$long_data)
-  #   print(p)
-  # })
   
   output$ssgsea_table <- renderDT({
     results <- ssgsea_data()

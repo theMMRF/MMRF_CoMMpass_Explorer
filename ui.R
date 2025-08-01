@@ -216,10 +216,7 @@ dashboardPage(
                  box(title = "", width = 6,
                      selectizeInput("gene_search_lollipop_g2", "Enter Gene for Lollipop Plot", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'),  width = "200px"),
                      plotOutput("lollipopPlot_g2")
-                 ),
-                 # box(title = "Variant Allele Frequency", width = 6,
-                 #     plotOutput("vafPlot")
-                 # )
+                 )
                ),
                
                # Interaction
@@ -307,12 +304,6 @@ dashboardPage(
                      actionButton("start_deseq2", "Start DESeq2 Analysis"),
                      plotOutput("bulkVolcano")
                  ),
-                 # box(title = "Heatmap", width = 6,
-                 #     selectizeInput("gene_search_bulk_heat", "Enter Genes",choices = NULL,
-                 #                    multiple = TRUE, options = list(create = TRUE, placeholder = 'Search for genes')),
-                 #     plotOutput("bulkHeat"),
-                 #     textOutput("portionExpressed")
-                 # ),
                ),
                
                fluidRow(
@@ -321,15 +312,6 @@ dashboardPage(
                  ),
                  downloadButton("download_DEGs", "Download Full Table")
                ),
-               
-               # fluidRow(
-               #   box(title = "ssGSEA", width = 12,
-               #       plotOutput("ssgsea_violin"),
-               #   ),
-               #   box(title = "Gene set table", width = 12,
-               #       DTOutput("ssgsea_table")
-               #   )
-               # )
                
                fluidRow(
                  box(title = "ssGSEA", width = 12,
@@ -373,6 +355,25 @@ dashboardPage(
                        options = list(create = TRUE, placeholder = 'Search for cell types')
                      ),
                      plotOutput("sc_cellcycle_hist")
+                 )
+               )
+      ),
+      tabPanel("Pseudo-bulk Expression",
+               fluidRow(
+                 column(12, htmlOutput("pseudoBulkNum"))
+               ),
+               
+               fluidRow(
+                 box(title = "Gene Expression by Cell Type", width = 12,
+                     selectizeInput("pseudo_bulk_gene", "Select Gene", choices = NULL, selected = "CD8A", multiple = FALSE),
+                     plotOutput("pseudo_bulk_violin")
+                 )
+               ),
+               
+               fluidRow(
+                 box(title = "Heatmap of Top Genes", width = 12,
+                     actionButton("plot_pseudo_heatmap", "Plot Top Variable Genes"),
+                     plotOutput("pseudo_bulk_heatmap")
                  )
                )
       )
