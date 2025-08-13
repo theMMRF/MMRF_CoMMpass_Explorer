@@ -15,7 +15,6 @@ maf_data <- readRDS("data/maf_data.rds")
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
 
-
 clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))

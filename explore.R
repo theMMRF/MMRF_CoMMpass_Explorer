@@ -140,6 +140,8 @@ ggplot(phase_df, aes(x = Phase, y = Percentage, fill = Phase)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
+
+######## Regime ###########
 # Clean and standardize Tx column in clinical data
 cleaned_Tx <- sapply(clinical_data$Tx, function(x) {
   if (is.na(x)) {
@@ -524,5 +526,35 @@ bias_genes <- grepl("^(IG[HKL]|TR[ABDGV]|MT\\-)", rownames(counts))
 counts_clean <- counts[!bias_genes, ]
 # Save
 saveRDS(counts_clean, "data/bulkseq_baseline_cleaned.rds")
+
+
+
+############ Psudo-bulk data ############
+############ Convert to RDS ############
+library(tidyverse)
+
+# List all pseudobulk files
+files <- list.files(
+  path = "data",
+  pattern = "^pseudobulk_.*\\.LogNormalize\\.tsv$",
+  full.names = TRUE
+)
+
+# Read each file into a named list
+pseudobulk_list <- lapply(files, function(f) {
+  read.delim(f, row.names = 1, check.names = FALSE)
+})
+
+# Name each list element based on file name (without extension)
+names(pseudobulk_list) <- tools::file_path_sans_ext(basename(files) |>
+                                                      sub("^pseudobulk_(.*)\\.LogNormalize\\.tsv$", "\\1", x = _))
+
+# # Save the list as an RDS
+# saveRDS(pseudobulk_list, file = "data/pseudobulk_data.rds")
+
+
+############ Feature testing ############
+pseudo_bulk <- readRDS("data/pseudobulk_data.rds")
+
 
 
