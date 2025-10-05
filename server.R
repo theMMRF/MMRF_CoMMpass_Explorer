@@ -755,14 +755,31 @@ shinyServer(function(input, output, session) {
     }
   })
   
+  output$mafCompTable <- renderDataTable({
+    req(length(unique(filtered_data$combined$cohort)) == 2)
+    
+    g1.vs.g2 <- mafCompare(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
+                           m1Name = 'Cohort 1', m2Name = 'Cohort 2', minMut = 5)
+    g1.vs.g2$results <- g1.vs.g2$results %>%
+      arrange(pval)
+    
+    g1.vs.g2$results
+  })
+  
   # MAF Comparison
   output$mafCompForestPlot <- renderPlot({
     req(length(unique(filtered_data$combined$cohort)) == 2)
     
     g1.vs.g2 <- mafCompare(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
                            m1Name = 'Cohort 1', m2Name = 'Cohort 2', minMut = 5)
+    g1.vs.g2$results <- g1.vs.g2$results %>%
+      arrange(pval)
+    
     g1.vs.g2$results <- g1.vs.g2$results[1:10]
-    forestPlot(mafCompareRes = g1.vs.g2, pVal = 0.05)
+    forestPlot(mafCompareRes = g1.vs.g2, 
+               pVal = 0.05, 
+               color = c("blue", "red"))
+    # forestPlot(mafCompareRes = g1.vs.g2, pVal = 0.05)
   })
   
   output$mafCompOncoPlot <- renderPlot({
@@ -789,7 +806,7 @@ shinyServer(function(input, output, session) {
     data <- preprocessed_bulkseq_data()
     
     # Generate density plot
-    distr_dens <- tpm_distr_dens(data$combined_bulkseq_tpm, data$clinical_combined, data$gene_interested)
+    distr_dens <- tpm_distr_dens(data$combined_bulkseq_tpm, data$clinical_combined, data$gene_interested, "bulkRNAseq")
     
     ggplotly(distr_dens, tooltip = "text") %>%
       layout(hovermode = "x")
@@ -800,7 +817,7 @@ shinyServer(function(input, output, session) {
     data <- preprocessed_bulkseq_data()
     
     # Generate box plot
-    tpm_box <- tpm_boxplot(data$combined_bulkseq_tpm, data$clinical_combined, data$gene_interested)
+    tpm_box <- tpm_boxplot(data$combined_bulkseq_tpm, data$clinical_combined, data$gene_interested, "bulkRNAseq")
     print(tpm_box)
   })
   
@@ -876,10 +893,10 @@ shinyServer(function(input, output, session) {
   })
   
   # Render volcano plot
-  output$bulkVolcano <- renderPlot({
+  # interactive volcano
+  output$bulkVolcano <- plotly::renderPlotly({
     req(filtered_degs())
-    volcano_plot <- deseq2_volcano(filtered_degs(), input$p_threshold, input$fc_threshold)
-    print(volcano_plot)
+    deseq2_volcano_plotly(filtered_degs(), input$p_threshold, input$fc_threshold, src = "volcano")
   })
   
   # Render DEGs table
@@ -928,14 +945,52 @@ shinyServer(function(input, output, session) {
     req(input$selected_gene_sets)
     
     plot_data <- results$long_data %>%
-      filter(GeneSet %in% input$selected_gene_sets)
+      dplyr::filter(GeneSet %in% input$selected_gene_sets) %>%
+      droplevels()
     
-    p <- ggplot(plot_data, aes(x = Cohort, y = EnrichmentScore, fill = Cohort)) +
-      geom_violin(trim = FALSE) +
-      geom_boxplot(width = 0.1, outlier.shape = NA) +
-      facet_wrap(~GeneSet, scales = "free_y") +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    # Base plot
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Cohort, y = EnrichmentScore, fill = Cohort)) +
+      ggplot2::geom_violin(trim = FALSE) +
+      ggplot2::geom_boxplot(width = 0.1, outlier.shape = NA) +
+      ggplot2::facet_wrap(~GeneSet, scales = "free_y") +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    
+    # ---- Add asterisks + p-values from wilcoxon results ----
+    if (!is.null(results$wilcox_results) && nrow(results$wilcox_results) > 0) {
+      ann <- results$wilcox_results %>%
+        dplyr::filter(GeneSet %in% input$selected_gene_sets) %>%
+        dplyr::select(GeneSet, p = adjusted_p_value) %>%
+        dplyr::left_join(
+          plot_data %>%
+            dplyr::group_by(GeneSet) %>%
+            dplyr::summarise(
+              y_top = max(EnrichmentScore, na.rm = TRUE),
+              rng   = diff(range(EnrichmentScore, na.rm = TRUE)),
+              .groups = "drop"
+            ),
+          by = "GeneSet"
+        ) %>%
+        dplyr::mutate(
+          stars = cut(
+            p,
+            breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+            labels = c("***", "**", "*", "ns")
+          ),
+          label = paste0(stars, " (adj. p=", formatC(p, format = "e", digits = 2), ")"),
+          x = 1.5,  # center between two cohorts on the x-axis
+          y = y_top + 0.07 * ifelse(is.finite(rng) & rng > 0, rng, abs(y_top) + 1)
+        ) %>%
+        dplyr::filter(!is.na(p))
+      
+      p <- p + ggplot2::geom_text(
+        data = ann,
+        ggplot2::aes(x = x, y = y, label = label),
+        inherit.aes = FALSE,
+        size = 4.2,
+        fontface = "bold"
+      )
+    }
     
     print(p)
   })
@@ -979,4 +1034,169 @@ shinyServer(function(input, output, session) {
     cell_cycle_hist(cohort_info, sc_meta, celltypes_interested)
   })
   
+  # -------------------- PSEUDOBULK (by cell type) ----------------------------
+  # Update gene list whenever cell type changes
+  observe({
+    req(input$pseudo_celltype)
+    pb_mat <- .get_pb_matrix(pseudo_bulk, input$pseudo_celltype)
+    updateSelectizeInput(session, "gene_search_pseudo_distr",
+                         choices = unique(rownames(pb_mat)), selected = NULL, server = TRUE)
+  })
+  
+  # Prepare pseudobulk data aligned to current filtered cohorts
+  preprocessed_pseudobulk_data <- reactive({
+    req(input$pseudo_celltype)
+    pb_tpm <- .get_pb_matrix(pseudo_bulk, input$pseudo_celltype)
+    
+    # Use the same combined clinical
+    clinical_combined <- filtered_data$combined
+    aligned <- .align_pb_to_clinical(pb_tpm, clinical_combined)
+    
+    list(
+      pb_tpm = aligned$pb_tpm,                       # genes x Tumor_Sample_Barcode
+      clinical_combined = aligned$clinical_aligned,  # rows aligned to columns of pb_tpm
+      celltype = input$pseudo_celltype,
+      total = ncol(pb_tpm)
+    )
+  })
+  
+  # Counts summary card
+  output$pseudoNum <- renderUI({
+    dat <- preprocessed_pseudobulk_data()
+    pb_clin <- dat$clinical_combined
+    
+    num_total <- dat$total
+    num_cohort1 <- sum(pb_clin$cohort == "Cohort1")
+    num_cohort2 <- sum(pb_clin$cohort == "Cohort2")
+    
+    text <- sprintf(
+      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
+       <strong>Cell type:</strong> %s<br>
+       <strong>Total Samples:</strong> %d<br>
+       <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
+       <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
+       </div>",
+      dat$celltype, num_total, num_cohort1, ifelse(num_total==0, 0, num_cohort1/num_total*100),
+      num_cohort2, ifelse(num_total==0, 0, num_cohort2/num_total*100)
+    )
+    HTML(text)
+  })
+  
+  # Distribution (density + histogram)
+  output$pseudo_tpm_distr <- renderPlotly({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr)
+    
+    p <- tpm_distr_dens(dat$pb_tpm, dat$clinical_combined, input$gene_search_pseudo_distr, "scRNAseq")
+    ggplotly(p, tooltip = "text") %>% layout(hovermode = "x")
+  })
+  
+  # Boxplot + Wilcoxon p‑value
+  output$pseudo_tpm_distr_boxplot <- renderPlot({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr)
+    
+    p <- tpm_boxplot(dat$pb_tpm, dat$clinical_combined, input$gene_search_pseudo_distr, "scRNAseq")
+    print(p)
+  })
+  
+  # Quantile tables (split by cohort)
+  output$pseudo_quantile_table_cohort1 <- renderDT({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr)
+    
+    clin1 <- dat$clinical_combined[dat$clinical_combined$cohort == "Cohort1", ]
+    pb1 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
+    
+    tab <- tpm_distr_table(pb1, input$gene_search_pseudo_distr)
+    datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
+  })
+  
+  output$pseudo_quantile_table_cohort2 <- renderDT({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr)
+    
+    clin2 <- dat$clinical_combined[dat$clinical_combined$cohort == "Cohort2", ]
+    pb2 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
+    
+    tab <- tpm_distr_table(pb2, input$gene_search_pseudo_distr)
+    datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
+  })
+  
+  # Survival curves by expression split
+  output$pseudo_tpm_survCompPlot_g1 <- renderPlot({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr, input$cohorting_method_pseudo_g1)
+    
+    clin1 <- filtered_data$cohort1
+    pb1 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
+    clin1 <- clin1[clin1$Tumor_Sample_Barcode %in% colnames(pb1), ]
+    
+    gene <- input$gene_search_pseudo_distr
+    if (!gene %in% rownames(pb1)) return(NULL)
+    
+    tpm_distr_survival(as.matrix(pb1[gene, , drop = FALSE]), clin1, input$cohorting_method_pseudo_g1)
+  })
+  
+  output$pseudo_tpm_survCompPlot_g2 <- renderPlot({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr, input$cohorting_method_pseudo_g2)
+    
+    clin2 <- filtered_data$cohort2
+    pb2 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
+    clin2 <- clin2[clin2$Tumor_Sample_Barcode %in% colnames(pb2), ]
+    
+    gene <- input$gene_search_pseudo_distr
+    if (!gene %in% rownames(pb2)) return(NULL)
+    
+    tpm_distr_survival(as.matrix(pb2[gene, , drop = FALSE]), clin2, input$cohorting_method_pseudo_g2)
+  })
+  
+  # Differential analysis (Wilcoxon + log2FC)
+  pseudo_diff_results <- reactiveValues(result = NULL)
+  
+  observeEvent(input$start_pseudo_diff, {
+    dat <- preprocessed_pseudobulk_data()
+    withProgress(message = paste0("Running differential analysis (", dat$celltype, ")..."), value = 0.5, {
+      res <- pseudobulk_diff(dat$pb_tpm, dat$clinical_combined)
+      pseudo_diff_results$result <- res
+    })
+  })
+  
+  # Thresholded results
+  filtered_pseudo_degs <- reactive({
+    req(pseudo_diff_results$result)
+    res <- pseudo_diff_results$result
+    thr_p <- input$p_threshold_pseudo
+    thr_fc <- input$fc_threshold_pseudo
+    
+    res$significant <- ifelse(!is.na(res$padj) & res$padj < thr_p & res$log2FoldChange > thr_fc, "Up-regulated",
+                              ifelse(!is.na(res$padj) & res$padj < thr_p & res$log2FoldChange < -thr_fc, "Down-regulated", "Not Significant"))
+    res
+  })
+  
+  # Volcano
+  output$pseudoVolcano <- renderPlot({
+    req(filtered_pseudo_degs())
+    print(deseq2_volcano(filtered_pseudo_degs(), input$p_threshold_pseudo, input$fc_threshold_pseudo))
+  })
+  
+  # Table + download
+  output$pseudo_DEGs_table <- renderDT({
+    req(filtered_pseudo_degs())
+    d <- filtered_pseudo_degs()[, c("baseMean", "log2FoldChange", "padj", "significant")]
+    d$baseMean <- round(d$baseMean, 3)
+    d$log2FoldChange <- round(d$log2FoldChange, 3)
+    datatable(d, options = list(pageLength = 10, autoWidth = TRUE))
+  })
+  
+  output$download_pseudo_DEGs <- downloadHandler(
+    filename = function() paste0("PseudoBulk_DEGs_", input$pseudo_celltype, "_", Sys.Date(), ".csv"),
+    content = function(file) {
+      d <- filtered_pseudo_degs()[, c("baseMean", "log2FoldChange", "padj", "significant")]
+      write.csv(d, file)
+    }
+  )
+  
 })
+

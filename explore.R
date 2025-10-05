@@ -527,6 +527,37 @@ counts_clean <- counts[!bias_genes, ]
 # Save
 saveRDS(counts_clean, "data/bulkseq_baseline_cleaned.rds")
 
+############## bulk data ###############
+############ Convert to RDS ############
+pkgs <- c("edgeR","limma","biomaRt","dplyr","tibble","survival","survminer","stringr")
+lapply(pkgs, library, character.only = TRUE)
+
+bulkseq <- read.csv("data/commpass_multi_omic_summary_flat_files_MMRF_CoMMpass_IA22_salmon_geneUnstranded_counts.tsv", sep="\t", row.names = 1)
+ens <- sub("\\..*", "", rownames(bulkseq))
+
+# Normalization for selection
+y <- DGEList(counts = bulkseq)
+y <- calcNormFactors(y)
+mean_cpm <- rowMeans(cpm(y, log = FALSE))
+
+# Annotation (freeze an Ensembl release for reproducibility if you can)
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+ann <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype"), mart = mart)
+ann <- ann[match(ens, ann$ensembl_gene_id), ]
+
+symbol <- ifelse(!is.na(ann$hgnc_symbol) & ann$hgnc_symbol != "", ann$hgnc_symbol, ens)
+
+# Score = prefer protein_coding, then highest mean CPM
+score <- ifelse(ann$gene_biotype == "protein_coding", 1e6, 0) + mean_cpm
+
+# Pick one row per symbol (highest score)
+idx_by_symbol <- tapply(seq_along(symbol), symbol, function(ix) ix[which.max(score[ix])])
+keep <- unlist(idx_by_symbol, use.names = FALSE)
+
+bulk_by_symbol <- bulkseq[keep, , drop = FALSE]
+rownames(bulk_by_symbol) <- symbol[keep]
+
+### Save new bulkRNAseq data
 
 
 ############ Psudo-bulk data ############

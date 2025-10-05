@@ -14,11 +14,32 @@ clinical_data <- readRDS("data/clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
+pseudo_bulk <- readRDS("data/pseudobulk_data.rds")
 
 clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
+
+
+
+clean_categorical <- function(x) {
+  x <- as.character(x)
+  x <- trimws(x)  # remove leading/trailing spaces
+  x[x %in% c("", ".", "NA", "N/A", "Unknown", "UNK")] <- NA
+  x
+}
+
+cols_with_blanks <- sapply(clinical_data, function(col) {
+  any(trimws(as.character(col)) == "")
+})
+
+empty_str_cols <- names(cols_with_blanks[cols_with_blanks])[!is.na(names(cols_with_blanks[cols_with_blanks]))]
+
+
+for (colname in empty_str_cols) {
+  clinical_data[[colname]] <- clean_categorical(clinical_data[[colname]])
+}
 
 # Helper functions -----------
 get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
@@ -287,7 +308,7 @@ get_cohort_selected <- function(filtered_data, cohort_selected) {
 # Summary of clinical data
 generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
-  features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class", "ASCT_First", "Triplet_First")
+  features <- c("Race", "Sex", "Age_range", "ISS", "IMWG_Risk_Class", "ASCT_First", "Triplet_First", "Hyperdiploidy", "chromothripsis")
   
   unique_values_counts_list <- lapply(features, function(feature) {
     data.frame(Value = names(table(selected_data[[feature]])),
@@ -360,9 +381,23 @@ create_distribution_plot <- function(data, feature, feature_label, continuous_fe
 
 # -------------------------------------
 # Statistical testing
+safe_dir <- function(delta, up_lbl = "Cohort1 ↑", down_lbl = "Cohort2 ↑") {
+  if (is.na(delta)) return("NA")
+  if (delta > 0) up_lbl else if (delta < 0) down_lbl else "Tie"
+}
+
+cohens_d <- function(x, y) {
+  x <- x[!is.na(x)]; y <- y[!is.na(y)]
+  n1 <- length(x); n2 <- length(y)
+  if (n1 < 2 || n2 < 2) return(NA_real_)
+  s1 <- stats::sd(x); s2 <- stats::sd(y)
+  sp <- sqrt(((n1 - 1)*s1^2 + (n2 - 1)*s2^2) / (n1 + n2 - 2))
+  if (!is.finite(sp) || sp == 0) return(NA_real_)
+  (mean(x) - mean(y)) / sp
+}
+
 # Perform statistical test for continuous variables
 test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
-  # Remove NA values
   cohort1_vals <- cohort1_vals[!is.na(cohort1_vals)]
   cohort2_vals <- cohort2_vals[!is.na(cohort2_vals)]
   
@@ -372,54 +407,167 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
       statistic = "NA",
       p_value = NA,
       cohort1_summary = "Insufficient data",
-      cohort2_summary = "Insufficient data"
+      cohort2_summary = "Insufficient data",
+      direction = "NA",
+      effect = "NA"
     ))
   }
   
-  # Check normality
+  # normality
   normal1 <- tryCatch(shapiro.test(cohort1_vals)$p.value > 0.05, error = function(e) FALSE)
   normal2 <- tryCatch(shapiro.test(cohort2_vals)$p.value > 0.05, error = function(e) FALSE)
   
+  # defaults
+  effect_num <- NA_real_
+  effect_label <- "NA"
+  direction <- "NA"
+  
   if (normal1 && normal2 && length(cohort1_vals) >= 3 && length(cohort2_vals) >= 3) {
-    # Use t-test
+    # t-test
     test_result <- tryCatch(t.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
     test_name <- "t-test"
     if (!is.null(test_result)) {
       statistic <- paste0("t = ", round(test_result$statistic, 3))
       p_value <- test_result$p.value
+      # Direction & effect: mean difference (+ Cohen's d)
+      m1 <- mean(cohort1_vals); m2 <- mean(cohort2_vals)
+      effect_num <- m1 - m2
+      d <- cohens_d(cohort1_vals, cohort2_vals)
+      direction <- safe_dir(effect_num)
+      effect_label <- paste0("Δmean = ", round(effect_num, 2),
+                             if (!is.na(d)) paste0(" (Cohen's d = ", round(d, 2), ")") else "")
     } else {
-      statistic <- "NA"
-      p_value <- NA
+      statistic <- "NA"; p_value <- NA
     }
   } else {
-    # Use Mann-Whitney U test
+    # Mann-Whitney
     test_result <- tryCatch(wilcox.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
     test_name <- "Mann-Whitney U"
     if (!is.null(test_result)) {
       statistic <- paste0("W = ", round(test_result$statistic, 3))
       p_value <- test_result$p.value
+      # Direction & effect: median difference
+      med1 <- stats::median(cohort1_vals); med2 <- stats::median(cohort2_vals)
+      effect_num <- med1 - med2
+      direction <- safe_dir(effect_num)
+      effect_label <- paste0("Δmedian = ", round(effect_num, 2))
     } else {
-      statistic <- "NA"
-      p_value <- NA
+      statistic <- "NA"; p_value <- NA
     }
   }
   
-  # Summary statistics
-  cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals, na.rm = TRUE), 2),
-                            " (SD: ", round(sd(cohort1_vals, na.rm = TRUE), 2), ")")
-  cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals, na.rm = TRUE), 2),
-                            " (SD: ", round(sd(cohort2_vals, na.rm = TRUE), 2), ")")
+  cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals), 2),
+                            " (SD: ", round(sd(cohort1_vals), 2), ")")
+  cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals), 2),
+                            " (SD: ", round(sd(cohort2_vals), 2), ")")
   
-  return(list(
+  list(
     test_name = test_name,
     statistic = statistic,
     p_value = p_value,
     cohort1_summary = cohort1_summary,
-    cohort2_summary = cohort2_summary
-  ))
+    cohort2_summary = cohort2_summary,
+    direction = direction,
+    effect = effect_label
+  )
 }
 
+
 # Perform statistical test for categorical variables
+# ---------- helpers ----------
+safe_dir <- function(delta, up_lbl = "Cohort1 ↑", down_lbl = "Cohort2 ↑") {
+  if (is.na(delta)) return("NA")
+  if (delta > 0) up_lbl else if (delta < 0) down_lbl else "Tie"
+}
+
+cohens_d <- function(x, y) {
+  x <- x[!is.na(x)]; y <- y[!is.na(y)]
+  n1 <- length(x); n2 <- length(y)
+  if (n1 < 2 || n2 < 2) return(NA_real_)
+  s1 <- stats::sd(x); s2 <- stats::sd(y)
+  sp <- sqrt(((n1 - 1)*s1^2 + (n2 - 1)*s2^2) / (n1 + n2 - 2))
+  if (!is.finite(sp) || sp == 0) return(NA_real_)
+  (mean(x) - mean(y)) / sp
+}
+# --------------------------------
+
+# Modify: test_continuous_variable()
+test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
+  cohort1_vals <- cohort1_vals[!is.na(cohort1_vals)]
+  cohort2_vals <- cohort2_vals[!is.na(cohort2_vals)]
+  
+  if (length(cohort1_vals) <= 2 || length(cohort2_vals) <= 2) {
+    return(list(
+      test_name = "Insufficient data",
+      statistic = "NA",
+      p_value = NA,
+      cohort1_summary = "Insufficient data",
+      cohort2_summary = "Insufficient data",
+      direction = "NA",
+      effect = "NA"
+    ))
+  }
+  
+  # normality
+  normal1 <- tryCatch(shapiro.test(cohort1_vals)$p.value > 0.05, error = function(e) FALSE)
+  normal2 <- tryCatch(shapiro.test(cohort2_vals)$p.value > 0.05, error = function(e) FALSE)
+  
+  # defaults
+  effect_num <- NA_real_
+  effect_label <- "NA"
+  direction <- "NA"
+  
+  if (normal1 && normal2 && length(cohort1_vals) >= 3 && length(cohort2_vals) >= 3) {
+    # t-test
+    test_result <- tryCatch(t.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
+    test_name <- "t-test"
+    if (!is.null(test_result)) {
+      statistic <- paste0("t = ", round(test_result$statistic, 3))
+      p_value <- test_result$p.value
+      # Direction & effect: mean difference (+ Cohen's d)
+      m1 <- mean(cohort1_vals); m2 <- mean(cohort2_vals)
+      effect_num <- m1 - m2
+      d <- cohens_d(cohort1_vals, cohort2_vals)
+      direction <- safe_dir(effect_num)
+      effect_label <- paste0("Δmean = ", round(effect_num, 2),
+                             if (!is.na(d)) paste0(" (Cohen's d = ", round(d, 2), ")") else "")
+    } else {
+      statistic <- "NA"; p_value <- NA
+    }
+  } else {
+    # Mann-Whitney
+    test_result <- tryCatch(wilcox.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
+    test_name <- "Mann-Whitney U"
+    if (!is.null(test_result)) {
+      statistic <- paste0("W = ", round(test_result$statistic, 3))
+      p_value <- test_result$p.value
+      # Direction & effect: median difference
+      med1 <- stats::median(cohort1_vals); med2 <- stats::median(cohort2_vals)
+      effect_num <- med1 - med2
+      direction <- safe_dir(effect_num)
+      effect_label <- paste0("Δmedian = ", round(effect_num, 2))
+    } else {
+      statistic <- "NA"; p_value <- NA
+    }
+  }
+  
+  cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals), 2),
+                            " (SD: ", round(sd(cohort1_vals), 2), ")")
+  cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals), 2),
+                            " (SD: ", round(sd(cohort2_vals), 2), ")")
+  
+  list(
+    test_name = test_name,
+    statistic = statistic,
+    p_value = p_value,
+    cohort1_summary = cohort1_summary,
+    cohort2_summary = cohort2_summary,
+    direction = direction,
+    effect = effect_label
+  )
+}
+
+# Modify: test_categorical_variable()
 test_categorical_variable <- function(data, feature) {
   contingency_table <- tryCatch(table(data$cohort, data[[feature]], useNA = "no"),
                                 error = function(e) NULL)
@@ -430,32 +578,32 @@ test_categorical_variable <- function(data, feature) {
       statistic = "NA",
       p_value = NA,
       cohort1_summary = "Insufficient data",
-      cohort2_summary = "Insufficient data"
+      cohort2_summary = "Insufficient data",
+      direction = "NA",
+      effect = "NA"
     ))
   }
   
-  # Check for very low frequencies that could cause issues
   min_cell_count <- min(contingency_table)
   total_cells <- length(contingency_table)
   cells_less_than_5 <- sum(contingency_table < 5)
   
-  # Skip analysis if too many cells have low counts or if any cell has 0 counts
   if (min_cell_count == 0 || cells_less_than_5 > (total_cells/2)) {
     return(list(
       test_name = "Low frequency categories",
       statistic = "NA",
       p_value = NA,
       cohort1_summary = "Low frequency",
-      cohort2_summary = "Low frequency"
+      cohort2_summary = "Low frequency",
+      direction = "NA",
+      effect = "NA"
     ))
   }
   
-  # Check if any expected frequencies are < 5
   expected_freq <- tryCatch(chisq.test(contingency_table)$expected, error = function(e) NULL)
   use_fisher <- !is.null(expected_freq) && any(expected_freq < 5)
   
   if (use_fisher) {
-    # For tables larger than 2x2, Fisher's exact test can be computationally intensive
     if (nrow(contingency_table) == 2 && ncol(contingency_table) == 2) {
       test_result <- tryCatch(fisher.test(contingency_table), error = function(e) NULL)
       test_name <- "Fisher's exact"
@@ -463,35 +611,31 @@ test_categorical_variable <- function(data, feature) {
         statistic <- paste0("OR = ", round(test_result$estimate, 3))
         p_value <- test_result$p.value
       } else {
-        statistic <- "NA"
-        p_value <- NA
+        statistic <- "NA"; p_value <- NA
       }
     } else {
-      # Use simulation for larger tables
-      test_result <- tryCatch(chisq.test(contingency_table, simulate.p.value = TRUE, B = 2000), 
+      test_result <- tryCatch(chisq.test(contingency_table, simulate.p.value = TRUE, B = 2000),
                               error = function(e) NULL)
       test_name <- "Chi-square (simulated)"
       if (!is.null(test_result)) {
-        statistic <- paste0("χ² = ", round(test_result$statistic, 3))
+        statistic <- paste0("\u03C7\u00B2 = ", round(test_result$statistic, 3))
         p_value <- test_result$p.value
       } else {
-        statistic <- "NA"
-        p_value <- NA
+        statistic <- "NA"; p_value <- NA
       }
     }
   } else {
     test_result <- tryCatch(chisq.test(contingency_table), error = function(e) NULL)
     test_name <- "Chi-square"
     if (!is.null(test_result)) {
-      statistic <- paste0("χ² = ", round(test_result$statistic, 3))
+      statistic <- paste0("\u03C7\u00B2 = ", round(test_result$statistic, 3))
       p_value <- test_result$p.value
     } else {
-      statistic <- "NA"
-      p_value <- NA
+      statistic <- "NA"; p_value <- NA
     }
   }
   
-  # Summary - proportions
+  # Summaries
   if ("Cohort1" %in% rownames(contingency_table) && "Cohort2" %in% rownames(contingency_table)) {
     cohort1_counts <- contingency_table["Cohort1", ]
     cohort2_counts <- contingency_table["Cohort2", ]
@@ -504,18 +648,38 @@ test_categorical_variable <- function(data, feature) {
     cohort2_summary <- paste(names(cohort2_counts),
                              paste0(cohort2_counts, " (", round(cohort2_counts/cohort2_total*100, 1), "%)"),
                              sep = ": ", collapse = "; ")
+    
+    # Direction: level with largest absolute proportion difference
+    p1 <- cohort1_counts / cohort1_total
+    p2 <- cohort2_counts / cohort2_total
+    diffs <- p1 - p2
+    idx <- which.max(abs(diffs))
+    top_level <- names(diffs)[idx]
+    delta_p <- diffs[idx] * 100
+    direction <- if (delta_p > 0) {
+      paste0("Cohort1 \u2191 for ", top_level)
+    } else if (delta_p < 0) {
+      paste0("Cohort2 \u2191 for ", top_level)
+    } else {
+      "Tie"
+    }
+    effect_label <- paste0(top_level, ": \u0394p = ", round(delta_p, 1), "%")
   } else {
     cohort1_summary <- "Data unavailable"
     cohort2_summary <- "Data unavailable"
+    direction <- "NA"
+    effect_label <- "NA"
   }
   
-  return(list(
+  list(
     test_name = test_name,
     statistic = statistic,
     p_value = p_value,
     cohort1_summary = cohort1_summary,
-    cohort2_summary = cohort2_summary
-  ))
+    cohort2_summary = cohort2_summary,
+    direction = direction,
+    effect = effect_label
+  )
 }
 
 # Determine significance level from p-value
@@ -554,15 +718,14 @@ create_significance_table <- function(data, clinical_features, continuous_featur
     Statistic = character(),
     Cohort1_Summary = character(),
     Cohort2_Summary = character(),
+    Direction = character(),
+    Effect = character(),
     Significance = character(),
     stringsAsFactors = FALSE
   )
   
   for (feature in clinical_features) {
-    # Skip if feature has too many missing values
     if (sum(!is.na(data[[feature]])) < 10) next
-    
-    # Determine if continuous or categorical
     is_continuous <- feature %in% continuous_features
     
     if (is_continuous) {
@@ -573,10 +736,8 @@ create_significance_table <- function(data, clinical_features, continuous_featur
       test_results <- test_categorical_variable(data, feature)
     }
     
-    # Determine significance level
     significance <- get_significance_level(test_results$p_value)
     
-    # Add to results
     results <- rbind(results, data.frame(
       Feature = feature,
       Type = ifelse(is_continuous, "Continuous", "Categorical"),
@@ -585,23 +746,21 @@ create_significance_table <- function(data, clinical_features, continuous_featur
       Statistic = test_results$statistic,
       Cohort1_Summary = test_results$cohort1_summary,
       Cohort2_Summary = test_results$cohort2_summary,
+      Direction = test_results$direction,
+      Effect = test_results$effect,
       Significance = significance,
       stringsAsFactors = FALSE
     ))
   }
   
-  # Format p-values for display
   results$P_Value_Display <- sapply(results$P_Value, format_p_value)
   
-  # Create final display table (without cohort summaries)
-  display_table <- results[, c("Feature", "Type", "Test_Used", "P_Value_Display", 
-                               "Statistic", "Significance")]
-  colnames(display_table) <- c("Clinical Feature", "Type", "Statistical Test", "P-Value", 
-                               "Test Statistic", "Significance")
+  display_table <- results[, c("Feature", "Type", "Test_Used", "P_Value_Display",
+                               "Statistic", "Direction", "Effect", "Significance")]
+  colnames(display_table) <- c("Clinical Feature", "Type", "Statistical Test", "P-Value",
+                               "Test Statistic", "Direction", "Effect", "Significance")
   
-  # Sort by p-value (significant first)
   display_table <- display_table[order(results$P_Value, na.last = TRUE), ]
-  
   return(display_table)
 }
 
@@ -622,7 +781,7 @@ get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   setdiff(colnames(clinical_data), exclude_cols)
 }
 
-# Define continuous features (customize this for your dataset)
+# Define continuous features
 get_continuous_features <- function() {
   c("Age", "BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
 }
@@ -660,34 +819,77 @@ process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) 
 }
 
 # Function for volcano plot
-deseq2_volcano <- function(deseq2_result, p_thr, logfc_thr) {
-  deseq2_result$significant <- ifelse(deseq2_result$padj < p_thr & deseq2_result$log2FoldChange > logfc_thr, "Up-regulated",
-                                      ifelse(deseq2_result$padj < p_thr & deseq2_result$log2FoldChange < -logfc_thr, "Down-regulated", "Not Significant"))
+deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcano") {
+  df <- deseq2_result %>%
+    rownames_to_column("gene") %>%
+    mutate(
+      neglog10padj = -log10(padj),
+      significant = case_when(
+        padj < p_thr & log2FoldChange >  logfc_thr ~ "Up-regulated",
+        padj < p_thr & log2FoldChange < -logfc_thr ~ "Down-regulated",
+        TRUE ~ "Not significant"
+      ),
+      tooltip = paste0(
+        "<b>", gene, "</b>",
+        "<br>log2FC: ", signif(log2FoldChange, 3),
+        "<br>padj: ", signif(padj, 3),
+        "<br>status: ", significant
+      )
+    )
   
-  top_genes <- deseq2_result %>%
-    dplyr::arrange(padj) %>%
-    dplyr::filter(significant != "Not Significant") %>%
-    dplyr::slice(1:10)
+  # axis limits for threshold lines
+  xmax <- max(abs(df$log2FoldChange), na.rm = TRUE)
+  ymax <- max(df$neglog10padj, na.rm = TRUE)
   
-  volcano_plot <- ggplot(deseq2_result, aes(x = log2FoldChange, y = -log10(padj), color = significant, shape = significant, fill = significant)) +
-    geom_point(alpha = 0.8, size = 2, stroke = 0.5) +
-    scale_color_manual(values = c("Not Significant" = "grey", "Up-regulated" = "red", "Down-regulated" = "blue")) +
-    scale_fill_manual(values = c("Not Significant" = "grey", "Up-regulated" = "red", "Down-regulated" = "blue")) +
-    scale_shape_manual(values = c("Not Significant" = 16, "Up-regulated" = 17, "Down-regulated" = 25)) +
-    xlab("Log2 Fold Change") +
-    ylab("-Log10 Adjusted P-value") +
-    ggtitle("") +
-    theme_minimal() +
-    geom_text_repel(data = top_genes, aes(label = rownames(top_genes)), 
-                    box.padding = 0.3, point.padding = 0.5, segment.color = 'grey50', 
-                    show.legend = FALSE)
+  cols <- c("Not significant" = "grey", "Up-regulated" = "red", "Down-regulated" = "blue")
   
-  return(volcano_plot)
+  p <- plot_ly(
+    data = df, source = src,
+    x = ~log2FoldChange, y = ~neglog10padj,
+    type = "scattergl", mode = "markers",
+    color = ~significant, colors = cols,
+    text = ~tooltip, hoverinfo = "text",
+    key = ~gene, marker = list(size = 6, line = list(width = 0.3, color = "rgba(0,0,0,0.3)"))
+  ) %>%
+    layout(
+      xaxis = list(title = "Log2 Fold Change", zeroline = FALSE),
+      yaxis = list(title = "-Log10 adjusted p-value"),
+      legend = list(orientation = "h", x = 0, y = 1.1),
+      shapes = list(
+        # vertical FC thresholds
+        list(type = "line", x0 =  logfc_thr, x1 =  logfc_thr, xref = "x", y0 = 0, y1 = ymax, yref = "y",
+             line = list(dash = "dot", width = 1)),
+        list(type = "line", x0 = -logfc_thr, x1 = -logfc_thr, xref = "x", y0 = 0, y1 = ymax, yref = "y",
+             line = list(dash = "dot", width = 1)),
+        # horizontal p-value threshold
+        list(type = "line", x0 = -xmax, x1 = xmax, xref = "x", y0 = -log10(p_thr), y1 = -log10(p_thr), yref = "y",
+             line = list(dash = "dot", width = 1))
+      )
+    )
+  
+  # optional labels for top significant genes
+  top_genes <- df %>% filter(significant != "Not significant") %>% arrange(padj) %>% slice(1:10)
+  if (nrow(top_genes) > 0) {
+    p <- p %>% add_text(
+      data = top_genes, x = ~log2FoldChange, y = ~neglog10padj,
+      text = ~gene, textposition = "top center", showlegend = FALSE
+    )
+  }
+  p
 }
 
 # Function to create distribution density plot for gene of interest
-tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested) {
+tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, data_type) {
   # Merge the datasets
+  value_type <- "TPM"
+  if (data_type=="scRNAseq") {
+    value_type <- "CPM"
+  } else {
+    if (data_type=="bulkRNAseq") {
+      value_type <- "TPM"
+    }
+  }
+  
   merged_data <- count_data_tpm %>%
     t() %>%
     as.data.frame() %>%
@@ -728,11 +930,11 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested) {
   scale_factor <- max(histogram_data$count) / max(density_data$density)
   p <- ggplot(gene_data, aes(x = TPM, fill = cohort, color = cohort)) +
     geom_histogram(aes(y = after_stat(count),
-                       text = paste("TPM range:", round(after_stat(x) - after_stat(width)/2, 2), "-", round(after_stat(x) + after_stat(width)/2, 2), "<br>Count:", after_stat(count))),
+                       text = paste(paste0(value_type, " range:"), round(after_stat(x) - after_stat(width)/2, 2), "-", round(after_stat(x) + after_stat(width)/2, 2), "<br>Count:", after_stat(count))),
                    position = "identity", bins = num_bins, fill = NA, alpha = 0) +
     geom_density(aes(y = after_stat(density) * scale_factor), alpha = 0.3, adjust = 1.5) +
-    geom_vline(data = median_tpm, aes(xintercept = median_TPM, color = cohort, text = paste("Median TPM:", round(median_TPM, 2))), linetype = "dashed", linewidth = 1) +
-    labs(x = "TPM",
+    geom_vline(data = median_tpm, aes(xintercept = median_TPM, color = cohort, text = paste(paste0("Median ", value_type), round(median_TPM, 2))), linetype = "dashed", linewidth = 1) +
+    labs(x = value_type,
          y = "Count",
          fill = "Cohort",
          color = "Cohort") +
@@ -742,7 +944,17 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested) {
 }
 
 # Function to draw boxplot of tpm values and use Wilcoxon test for p values
-tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested) {
+tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data_type) {
+  
+  value_type <- "TPM"
+  if (data_type=="scRNAseq") {
+    value_type <- "CPM"
+  } else {
+    if (data_type=="bulkRNAseq") {
+      value_type <- "TPM"
+    }
+  }
+  
   # Merge the datasets
   merged_data <- count_data_tpm %>%
     t() %>%
@@ -753,17 +965,16 @@ tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested) {
   # Ensure 'cohort' is a factor
   merged_data$cohort <- as.factor(merged_data$cohort)
   
-  # Filter for the gene of interest
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
-    rename(TPM = all_of(gene_interested))
+    rename(!!value_type := all_of(gene_interested))
   
   # Create the boxplot
-  p <- ggboxplot(gene_data, x = "cohort", y = "TPM",
+  p <- ggboxplot(gene_data, x = "cohort", y = value_type,
                  color = "cohort", add = "jitter") +
     stat_compare_means(method = "wilcox.test", label = "p.format", label.y = max(gene_data$TPM) * 1.1) +
     labs(x = "Cohort",
-         y = paste("TPM of", gene_interested))
+         y = paste(value_type, " of", gene_interested))
   
   return(p)
 }
@@ -1097,3 +1308,72 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
   
   return(grid_plot)
 }
+
+
+# --- PSEUDOBULK: load + helpers ---------------------------------------------
+# Convert IDs like "MMRF_1013_1" → "MMRF_1013" (matches pseudobulk columns)
+.to_base_id <- function(x) sub("(_[0-9]+)?$", "", as.character(x))
+
+# Make sure a pseudobulk matrix is numeric and well‑formed
+.get_pb_matrix <- function(pb_list, celltype) {
+  stopifnot(celltype %in% names(pb_list))
+  mat <- pb_list[[celltype]]
+  if (!is.matrix(mat)) mat <- as.matrix(mat)
+  storage.mode(mat) <- "numeric"
+  mat
+}
+
+# Align a pseudobulk TPM matrix to clinical samples by patient (base_id)
+# Returns: list(pb_tpm, clinical_aligned, inter_base_ids)
+.align_pb_to_clinical <- function(pb_tpm, clinical_combined) {
+  clinical_combined$base_id <- .to_base_id(clinical_combined$public_id)
+  inter <- intersect(colnames(pb_tpm), clinical_combined$base_id)
+  if (length(inter) < 2) {
+    warning("Very small overlap between pseudobulk and clinical")
+  }
+  
+  # Keep one clinical row per base_id
+  clin_one <- clinical_combined[clinical_combined$base_id %in% inter, , drop = FALSE]
+  
+  # Reorder columns to the clinical order and relabel columns to Tumor_Sample_Barcode
+  pb_tpm2 <- pb_tpm[, inter, drop = FALSE]
+  pb_tpm2 <- pb_tpm2[, clin_one$base_id, drop = FALSE]
+  colnames(pb_tpm2) <- clin_one$Tumor_Sample_Barcode
+  
+  list(pb_tpm = pb_tpm2, clinical_aligned = clin_one, inter_base_ids = inter)
+}
+
+# Pseudobulk differential analysis (non‑count). Uses Wilcoxon rank‑sum + log2FC
+# Inputs: pb_tpm (genes x samples), clin (with $cohort)
+# Returns: data.frame with baseMean, log2FoldChange, pval, padj
+pseudobulk_diff <- function(pb_tpm, clin) {
+  stopifnot(ncol(pb_tpm) == nrow(clin))
+  grp <- factor(clin$cohort)
+  if (length(levels(grp)) != 2) stop("Need exactly two cohorts for differential analysis")
+  
+  s1 <- which(grp == levels(grp)[1])
+  s2 <- which(grp == levels(grp)[2])
+  
+  eps <- 1e-6
+  g_mean <- rowMeans(pb_tpm, na.rm = TRUE)
+  g_mean1 <- rowMeans(pb_tpm[, s1, drop = FALSE], na.rm = TRUE)
+  g_mean2 <- rowMeans(pb_tpm[, s2, drop = FALSE], na.rm = TRUE)
+  log2fc <- log2((g_mean1 + eps) / (g_mean2 + eps))
+  
+  # Wilcoxon p‑values per gene
+  pvals <- apply(pb_tpm, 1, function(v) {
+    x <- v[s1]; y <- v[s2]
+    if (all(is.na(x)) || all(is.na(y))) return(NA_real_)
+    tryCatch(wilcox.test(x, y)$p.value, error = function(e) NA_real_)
+  })
+  padj <- p.adjust(pvals, method = "BH")
+  
+  data.frame(
+    baseMean = g_mean,
+    log2FoldChange = log2fc,
+    pvalue = pvals,
+    padj = padj,
+    row.names = rownames(pb_tpm)
+  )
+}
+

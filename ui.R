@@ -246,6 +246,12 @@ dashboardPage(
                ),
                
                fluidRow(
+                 box(title = "", width = 12,
+                     dataTableOutput("mafCompTable")
+                 )
+               ),
+               
+               fluidRow(
                  box(title = "", width = 6,
                      plotOutput("mafCompForestPlot")
                  )
@@ -291,19 +297,15 @@ dashboardPage(
                  )
                ),
                
-               fluidRow(
-                 box(title = "DESeq2", width = 12,
-                     p("The DESeq2 analysis will perform differential expression analysis on Cohort 1 and Cohort 2,"),
-                     p("comparing their gene expression profiles to identify significant differences. Click 'Start DESeq2 Analysis' to proceed."),
-                     p("Each run would take several minutes depending on the sample size."),
-                     fluidRow(
-                       column(6, numericInput("p_threshold", "P-value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
-                       column(6, numericInput("fc_threshold", "Log2 Fold Change Threshold", value = 1.5, min = 0, max = 10, step = 0.1))
-                     ),
-                     verbatimTextOutput("deseq_status"),
-                     actionButton("start_deseq2", "Start DESeq2 Analysis"),
-                     plotOutput("bulkVolcano")
-                 ),
+               box(title = "DESeq2", width = 12,
+                   p("The DESeq2 analysis will perform differential expression ..."),
+                   fluidRow(
+                     column(6, numericInput("p_threshold", "P-value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
+                     column(6, numericInput("fc_threshold", "Log2 Fold Change Threshold", value = 1.5, min = 0, max = 10, step = 0.1))
+                   ),
+                   verbatimTextOutput("deseq_status"),
+                   actionButton("start_deseq2", "Start DESeq2 Analysis"),
+                   plotlyOutput("bulkVolcano", height = "520px")
                ),
                
                fluidRow(
@@ -358,25 +360,60 @@ dashboardPage(
                  )
                )
       ),
-      tabPanel("Pseudo-bulk Expression",
+      tabPanel("Pseudo‑Bulk",
                fluidRow(
-                 column(12, htmlOutput("pseudoBulkNum"))
+                 column(12, htmlOutput("pseudoNum"))
                ),
                
                fluidRow(
-                 box(title = "Gene Expression by Cell Type", width = 12,
-                     selectizeInput("pseudo_bulk_gene", "Select Gene", choices = NULL, selected = "CD8A", multiple = FALSE),
-                     plotOutput("pseudo_bulk_violin")
+                 box(title = NULL, width = 12,
+                     selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk), width = "240px"),
+                     selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = NULL,
+                                    options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
+                     plotlyOutput("pseudo_tpm_distr")
                  )
                ),
                
                fluidRow(
-                 box(title = "Heatmap of Top Genes", width = 12,
-                     actionButton("plot_pseudo_heatmap", "Plot Top Variable Genes"),
-                     plotOutput("pseudo_bulk_heatmap")
+                 box(title = NULL, width = 12,
+                     plotOutput("pseudo_tpm_distr_boxplot")
                  )
+               ),
+               
+               fluidRow(
+                 box(title = "Cohort 1", width = 6,
+                     selectInput("cohorting_method_pseudo_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
+                     plotOutput("pseudo_tpm_survCompPlot_g1")
+                 ),
+                 box(title = "Cohort 2", width = 6,
+                     selectInput("cohorting_method_pseudo_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
+                     plotOutput("pseudo_tpm_survCompPlot_g2")
+                 )
+               ),
+               
+               fluidRow(
+                 box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort1")),
+                 box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort2"))
+               ),
+               
+               fluidRow(
+                 box(title = "Differential analysis (pseudobulk)", width = 12,
+                     p("Non‑count data detected; using Wilcoxon rank‑sum per gene and log2FC between cohorts."),
+                     fluidRow(
+                       column(6, numericInput("p_threshold_pseudo", "P‑value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
+                       column(6, numericInput("fc_threshold_pseudo", "Log2 Fold Change Threshold", value = 1.0, min = 0, max = 10, step = 0.1))
+                     ),
+                     verbatimTextOutput("pseudo_deseq_status"),
+                     actionButton("start_pseudo_diff", "Run differential analysis"),
+                     plotOutput("pseudoVolcano")
+                 )
+               ),
+               
+               fluidRow(
+                 box(title = "DEGs", width = 12, DTOutput("pseudo_DEGs_table")),
+                 downloadButton("download_pseudo_DEGs", "Download Full Table")
                )
-      )
+      ),
     ),
     tags$div(
       style = "text-align: center; padding: 30px 10px 20px 10px; border-top: 1px solid #ccc; background-color: #f9f9f9;",
