@@ -1,6 +1,12 @@
 # Server function ------
 shinyServer(function(input, output, session) {
+  picker_state <- reactiveValues()  # per-input cache: labels and selection
   shinyjs::useShinyjs()
+  
+  .inputs_identical <- function(old, new) {
+    if (is.null(old)) return(FALSE)
+    identical(old$labels, new$labels) && identical(old$selected, new$selected)
+  }
   
   # --- user-defined cohorts  --------------------------------------------------
   user_cohorts <- reactiveValues(
@@ -320,20 +326,25 @@ shinyServer(function(input, output, session) {
       labels <- vapply(all_vals,
                        function(v) paste0(v, " (", .safe_count(tbl, v), ")"),
                        FUN.VALUE = character(1))
-      
-      # Keep values the same, only change displayed labels
       choices_named <- setNames(all_vals, labels)
       
-      # Preserve existing selections if still valid
+      # Preserve existing selection (may be NULL/character(0))
       current_sel <- input[[input_id]]
       current_sel <- intersect(current_sel, all_vals)
       
-      shinyWidgets::updatePickerInput(
-        session,
-        inputId = input_id,
-        choices = choices_named,
-        selected = current_sel
-      )
+      # NEW: change detection
+      new_state <- list(labels = labels, selected = current_sel)
+      old_state <- isolate(picker_state[[input_id]])
+      
+      if (!.inputs_identical(old_state, new_state)) {
+        shinyWidgets::updatePickerInput(
+          session,
+          inputId = input_id,
+          choices = choices_named,
+          selected = current_sel
+        )
+        isolate(picker_state[[input_id]] <- new_state)
+      }
     }
   }
   
