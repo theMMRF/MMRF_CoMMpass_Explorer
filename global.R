@@ -22,7 +22,6 @@ clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 
 
-
 clean_categorical <- function(x) {
   x <- as.character(x)
   x <- trimws(x)  # remove leading/trailing spaces
@@ -40,6 +39,66 @@ empty_str_cols <- names(cols_with_blanks[cols_with_blanks])[!is.na(names(cols_wi
 for (colname in empty_str_cols) {
   clinical_data[[colname]] <- clean_categorical(clinical_data[[colname]])
 }
+
+
+# ---- user's cohort helpers ----------------------------------------------------
+.parse_public_ids_from_file <- function(file_input) {
+  if (is.null(file_input)) return(character())
+  path <- file_input$datapath
+  if (!nzchar(path)) return(character())
+  # Try fread for flexible csv/tsv; fallback to readLines for raw txt
+  ids <- tryCatch({
+    dt <- data.table::fread(path, header = TRUE, sep = ",", fill = TRUE, data.table = FALSE)
+    # if single column without header, fread will name it V1
+    cols <- names(dt)
+    cand <- intersect(cols, c("public_id", "Public_ID", "PublicId", "id", "ID", "V1"))
+    if (length(cand) == 0) cand <- cols[1]
+    as.character(dt[[cand[1]]])
+  }, error = function(e) {
+    # raw text: one per line / comma separated
+    txt <- readLines(path, warn = FALSE)
+    unlist(strsplit(paste(txt, collapse = ","), "[\n,;\t ]+"))
+  })
+  ids <- trimws(ids)
+  ids[nzchar(ids)]
+}
+
+.parse_public_ids_from_text <- function(txt) {
+  if (is.null(txt) || !nzchar(txt)) return(character())
+  ids <- unlist(strsplit(txt, "[\n,;\t ]+"))
+  ids <- trimws(ids)
+  ids[nzchar(ids)]
+}
+
+# Map public_ids to Tumor_Sample_Barcode; allow fallback by base id (drop trailing _#)
+.map_public_ids_to_tsb <- function(public_ids, clinical) {
+  if (length(public_ids) == 0) return(list(tsb = character(), matched_public = character(), unmatched = character()))
+  public_ids <- unique(public_ids)
+  baseify <- function(x) sub("(_\\d+)?$", "", x)
+  
+  exact_match <- clinical$Tumor_Sample_Barcode[match(public_ids, clinical$public_id)]
+  matched_exact <- !is.na(exact_match)
+  
+  # Fallback: match by base id (MMRF_1234)
+  need_fallback <- which(!matched_exact)
+  tsb_fb <- character(length(public_ids)); tsb_fb[] <- NA_character_
+  if (length(need_fallback)) {
+    clin_base <- baseify(as.character(clinical$public_id))
+    pid_base  <- baseify(public_ids[need_fallback])
+    idx <- match(pid_base, clin_base)
+    tsb_fb[need_fallback] <- clinical$Tumor_Sample_Barcode[idx]
+  }
+  
+  tsb_all <- ifelse(matched_exact, exact_match, tsb_fb)
+  matched <- !is.na(tsb_all)
+  
+  list(
+    tsb = unique(tsb_all[matched]),
+    matched_public = unique(public_ids[matched]),
+    unmatched = unique(public_ids[!matched])
+  )
+}
+
 
 # Helper functions -----------
 get_mutation_filtered_ids <- function(input, cohort_id, row_count) {

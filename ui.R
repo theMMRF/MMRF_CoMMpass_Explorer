@@ -137,6 +137,41 @@ dashboardPage(
       tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
     ),
     tabsetPanel(
+      tabPanel("Custom Cohorts",
+               fluidRow(
+                 box(title = "How it works", width = 12,
+                     HTML("<ul style='margin-bottom:0'>
+             <li>Upload a CSV/TXT <em>or</em> paste <code>public_id</code>s (e.g., <code>MMRF_1013_1</code>), one per line or comma-separated.</li>
+             <li>Click <strong>Load</strong> for each cohort.</li>
+             <li>Click <strong>Apply Filters</strong> on the left menu to enable your loaded cohorts.</li>
+             </ul>")
+                 )
+               ),
+               fluidRow(
+                 column(6,
+                        box(title = "Cohort 1", width = 12,
+                            fileInput("upload_cohort1", "Upload Cohort 1 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
+                            textAreaInput("paste_cohort1", "Or paste public_ids", rows = 5, placeholder = "MMRF_1007_1\nMMRF_1013_1\n..."),
+                            actionButton("load_cohort1", "Load Cohort 1 IDs"),
+                            downloadButton("download_unmatched_c1", "Download unmatched IDs"),
+                            tags$hr(),
+                            verbatimTextOutput("cohort1_status"),
+                            DTOutput("cohort1_preview")
+                        )
+                 ),
+                 column(6,
+                        box(title = "Cohort 2", width = 12,
+                            fileInput("upload_cohort2", "Upload Cohort 2 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
+                            textAreaInput("paste_cohort2", "Or paste public_ids", rows = 5, placeholder = "MMRF_1020_1\nMMRF_1055_1\n..."),
+                            actionButton("load_cohort2", "Load Cohort 2 IDs"),
+                            downloadButton("download_unmatched_c2", "Download unmatched IDs"),
+                            tags$hr(),
+                            verbatimTextOutput("cohort2_status"),
+                            DTOutput("cohort2_preview")
+                        )
+                 )
+               )
+      ),
       tabPanel("Overall Summary",
                fluidRow(
                  column(6, htmlOutput("clinicalNum")),
@@ -325,9 +360,6 @@ dashboardPage(
                      DTOutput("ssgsea_table")
                  )
                )
-               
-               
-               
       ),
       
       tabPanel("Immune Microenvironment",

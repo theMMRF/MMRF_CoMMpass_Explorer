@@ -2,6 +2,66 @@
 shinyServer(function(input, output, session) {
   shinyjs::useShinyjs()
   
+  # --- user-defined cohorts  --------------------------------------------------
+  user_cohorts <- reactiveValues(
+    c1_public = character(), c2_public = character(),
+    c1_tsb = character(), c2_tsb = character(),
+    c1_unmatched = character(), c2_unmatched = character()
+  )
+  
+  # Load Cohort 1
+  observeEvent(input$load_cohort1, {
+    ids <- unique(c(.parse_public_ids_from_file(input$upload_cohort1),
+                    .parse_public_ids_from_text(input$paste_cohort1)))
+    map <- .map_public_ids_to_tsb(ids, clinical_data)
+    user_cohorts$c1_public <- map$matched_public
+    user_cohorts$c1_tsb <- map$tsb
+    user_cohorts$c1_unmatched <- map$unmatched
+    
+    if (length(map$unmatched)) showNotification(sprintf("%d Cohort 1 IDs were unmatched", length(map$unmatched)), type = "warning")
+  })
+  
+  # Load Cohort 2
+  observeEvent(input$load_cohort2, {
+    ids <- unique(c(.parse_public_ids_from_file(input$upload_cohort2),
+                    .parse_public_ids_from_text(input$paste_cohort2)))
+    map <- .map_public_ids_to_tsb(ids, clinical_data)
+    user_cohorts$c2_public <- map$matched_public
+    user_cohorts$c2_tsb <- map$tsb
+    user_cohorts$c2_unmatched <- map$unmatched
+    
+    if (length(map$unmatched)) showNotification(sprintf("%d Cohort 2 IDs were unmatched", length(map$unmatched)), type = "warning")
+  })
+  
+  # Status + previews
+  output$cohort1_status <- renderText({
+    sprintf("Matched: %d  |  Unmatched: %d", length(user_cohorts$c1_tsb), length(user_cohorts$c1_unmatched))
+  })
+  output$cohort2_status <- renderText({
+    sprintf("Matched: %d  |  Unmatched: %d", length(user_cohorts$c2_tsb), length(user_cohorts$c2_unmatched))
+  })
+  
+  output$cohort1_preview <- renderDT({
+    if (!length(user_cohorts$c1_tsb)) return(datatable(data.frame(Message = "No Cohort 1 IDs loaded")))
+    dat <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% user_cohorts$c1_tsb, ]
+    datatable(dat[, c("public_id","Tumor_Sample_Barcode","Age","Sex","Race")], options = list(pageLength = 5, scrollX = TRUE))
+  })
+  output$cohort2_preview <- renderDT({
+    if (!length(user_cohorts$c2_tsb)) return(datatable(data.frame(Message = "No Cohort 2 IDs loaded")))
+    dat <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% user_cohorts$c2_tsb, ]
+    datatable(dat[, c("public_id","Tumor_Sample_Barcode","Age","Sex","Race")], options = list(pageLength = 5, scrollX = TRUE))
+  })
+  
+  output$download_unmatched_c1 <- downloadHandler(
+    filename = function() paste0("unmatched_cohort1_", Sys.Date(), ".txt"),
+    content = function(file) writeLines(user_cohorts$c1_unmatched, file)
+  )
+  output$download_unmatched_c2 <- downloadHandler(
+    filename = function() paste0("unmatched_cohort2_", Sys.Date(), ".txt"),
+    content = function(file) writeLines(user_cohorts$c2_unmatched, file)
+  )
+  
+  
   # Mutational Profile. Store rule row counters
   mut_row_counter <- reactiveValues(cohort1 = 0, cohort2 = 0)
   mut_rule_cache <- reactiveValues(cohort1 = list(), cohort2 = list())
@@ -216,6 +276,9 @@ shinyServer(function(input, output, session) {
   
   filtered_data_cohort1 <- eventReactive(input$apply_filters, {
     clinical_filtered <- filter_cohort_data(copy(clinical_data), cohort1_filters())
+    allowed <- if (exists("user_cohorts") && length(user_cohorts$c1_tsb)) user_cohorts$c1_tsb else clinical_filtered$Tumor_Sample_Barcode
+    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% allowed, ]
+    
     clinical_error <- copy(clinical_filtered)
     
     # Gene mutation filter
@@ -282,6 +345,9 @@ shinyServer(function(input, output, session) {
   
   filtered_data_cohort2 <- eventReactive(input$apply_filters, {
     clinical_filtered <- filter_cohort_data(copy(clinical_data), cohort2_filters())
+    allowed <- if (exists("user_cohorts") && length(user_cohorts$c2_tsb)) user_cohorts$c2_tsb else clinical_filtered$Tumor_Sample_Barcode
+    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% allowed, ]
+    
     clinical_error <- copy(clinical_filtered)
     
     # Gene mutation filter
@@ -936,7 +1002,7 @@ shinyServer(function(input, output, session) {
     gene_sets <- unique(results$wilcox_results[order(results$wilcox_results$adjusted_p_value), ]$GeneSet)
     updateSelectizeInput(session, "selected_gene_sets",
                          choices = gene_sets,
-                         selected = head(gene_sets, 5), # default selection
+                         selected = head(gene_sets, 3), # default selection
                          server = TRUE)
   })
   
@@ -952,7 +1018,7 @@ shinyServer(function(input, output, session) {
     p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Cohort, y = EnrichmentScore, fill = Cohort)) +
       ggplot2::geom_violin(trim = FALSE) +
       ggplot2::geom_boxplot(width = 0.1, outlier.shape = NA) +
-      ggplot2::facet_wrap(~GeneSet, scales = "free_y") +
+      ggplot2::facet_wrap(~GeneSet, scales = "free_y", ncol=5) +
       ggplot2::theme_minimal() +
       ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
     
