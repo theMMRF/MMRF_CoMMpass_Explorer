@@ -249,6 +249,146 @@ shinyServer(function(input, output, session) {
   })
   
   # Filters interface
+  # ---- Dynamic count labels inside pickers -------------------------------------
+  
+  # Map: inputId  -> (filter_key used by filter_cohort_data, clinical column name)
+  .make_picker_map <- function(cohort_id) {
+    # clinical
+    clinical_map <- data.frame(
+      inputId    = paste0(c("sex_filter_", "race_filter_", "stage_filter_", "risk_filter_", "cyto_risk_filter_",
+                            "rna_subtype_filter_", "cna_subtype_filter_", "triplet_filter_", "asct_filter_"),
+                          cohort_id),
+      filter_key = c("sex","race","stage","risk","cyto_risk",
+                     "rna_subtype","cna_subtype","triplet","asct"),
+      column     = c("Sex","Race","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk",
+                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First","ASCT_First"),
+      stringsAsFactors = FALSE
+    )
+    
+    # molecular
+    molecular_map <- data.frame(
+      inputId    = paste0(c("chr_1q21_gain_filter_","chr_1q21_amp_filter_","chr_13q14_del_filter_",
+                            "chr_13q34_del_filter_","chr_17p13_del_filter_","diploidy_filter_",
+                            "chromothripsis_filter_","t_11_14_filter_","t_4_14_filter_",
+                            "maf_filter_","apobec_filter_","tp53_filter_","tp53_ns_filter_"),
+                          cohort_id),
+      filter_key = c("q21_gain","q21_amp","del13q14","del13q34","del17p13","diploidy",
+                     "chromothripsis","t11_14","t4_14","maf","apobec","tp53","tp53_ns"),
+      column     = c("chr_1q21_gain","chr_1q21_amp","chr_13q14_del","chr_13q34_del","chr_17p13_del",
+                     "Hyperdiploidy","chromothripsis","t_11_14","t_4_14","MAF_MAFB","APOBEC",
+                     "TP53_Funct_Copies","TP53_NS_Mut_Count"),
+      stringsAsFactors = FALSE
+    )
+    
+    rbind(clinical_map, molecular_map)
+  }
+  
+  # Core updater for one cohort
+  .update_picker_counts_for_cohort <- function(cohort_id) {
+    # current filters as entered (WITHOUT pressing Apply)
+    filters <- c(
+      get_cohort_filters(input, cohort_id, "clinical"),
+      get_cohort_filters(input, cohort_id, "molecular")
+    )
+    
+    # Build mapping
+    mp <- .make_picker_map(cohort_id)
+    
+    # For every picker, recompute counts conditioned on OTHER filters
+    for (i in seq_len(nrow(mp))) {
+      input_id   <- mp$inputId[i]
+      filter_key <- mp$filter_key[i]
+      colname    <- mp$column[i]
+      
+      # Skip if this input doesn't exist yet (UI not mounted)
+      if (!(input_id %in% names(input))) next
+      
+      # Exclude this one filter from the preview subset
+      filters_excl <- filters
+      filters_excl[[filter_key]] <- NULL
+      
+      preview <- filter_cohort_data(copy(clinical_data), filters_excl)
+      
+      # Use all possible values from the full dataset (so zero-count values still show)
+      all_vals <- sort(unique(na.omit(as.character(clinical_data[[colname]]))))
+      if (length(all_vals) == 0) next
+      
+      # Tally counts in preview subset
+      tbl <- table(as.character(preview[[colname]]), useNA = "no")
+      
+      # Build labels "value (count)"
+      labels <- vapply(all_vals,
+                       function(v) paste0(v, " (", .safe_count(tbl, v), ")"),
+                       FUN.VALUE = character(1))
+      
+      # Keep values the same, only change displayed labels
+      choices_named <- setNames(all_vals, labels)
+      
+      # Preserve existing selections if still valid
+      current_sel <- input[[input_id]]
+      current_sel <- intersect(current_sel, all_vals)
+      
+      shinyWidgets::updatePickerInput(
+        session,
+        inputId = input_id,
+        choices = choices_named,
+        selected = current_sel
+      )
+    }
+  }
+  
+  # Re-run the updater whenever relevant inputs change
+  # (This listens broadly to that cohort's filter inputs.)
+  observe({
+    # Touch all cohort1 filter inputs to create reactivity
+    dummy <- list(
+      input$sex_filter_cohort1, input$race_filter_cohort1, input$stage_filter_cohort1,
+      input$risk_filter_cohort1, input$cyto_risk_filter_cohort1,
+      input$rna_subtype_filter_cohort1, input$cna_subtype_filter_cohort1,
+      input$triplet_filter_cohort1, input$asct_filter_cohort1,
+      input$chr_1q21_gain_filter_cohort1, input$chr_1q21_amp_filter_cohort1,
+      input$chr_13q14_del_filter_cohort1, input$chr_13q34_del_filter_cohort1,
+      input$chr_17p13_del_filter_cohort1, input$diploidy_filter_cohort1,
+      input$chromothripsis_filter_cohort1, input$t_11_14_filter_cohort1,
+      input$t_4_14_filter_cohort1, input$maf_filter_cohort1,
+      input$apobec_filter_cohort1, input$tp53_filter_cohort1, input$tp53_ns_filter_cohort1,
+      input$age_cohort1  # include age so categorical counts reflect age subset, too
+    )
+    .update_picker_counts_for_cohort("cohort1")
+  })
+  
+  observe({
+    # Same for cohort2
+    dummy <- list(
+      input$sex_filter_cohort2, input$race_filter_cohort2, input$stage_filter_cohort2,
+      input$risk_filter_cohort2, input$cyto_risk_filter_cohort2,
+      input$rna_subtype_filter_cohort2, input$cna_subtype_filter_cohort2,
+      input$triplet_filter_cohort2, input$asct_filter_cohort2,
+      input$chr_1q21_gain_filter_cohort2, input$chr_1q21_amp_filter_cohort2,
+      input$chr_13q14_del_filter_cohort2, input$chr_13q34_del_filter_cohort2,
+      input$chr_17p13_del_filter_cohort2, input$diploidy_filter_cohort2,
+      input$chromothripsis_filter_cohort2, input$t_11_14_filter_cohort2,
+      input$t_4_14_filter_cohort2, input$maf_filter_cohort2,
+      input$apobec_filter_cohort2, input$tp53_filter_cohort2, input$tp53_ns_filter_cohort2,
+      input$age_cohort2
+    )
+    .update_picker_counts_for_cohort("cohort2")
+  })
+  
+  # Also refresh counts when users click "Clear All" for a cohort
+  observeEvent(input$clear_cohort1, {
+    shinyjs::reset("cohort1_filters")
+    # Let the UI reset, then recompute counts
+    shiny::invalidateLater(50, session)
+    .update_picker_counts_for_cohort("cohort1")
+  })
+  
+  observeEvent(input$clear_cohort2, {
+    shinyjs::reset("cohort2_filters")
+    shiny::invalidateLater(50, session)
+    .update_picker_counts_for_cohort("cohort2")
+  })
+  
   # Cohort 1
   output$age_filter_cohort1 <- renderUI({
     min_age <- min(clinical_data$Age, na.rm = TRUE)

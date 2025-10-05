@@ -40,6 +40,11 @@ for (colname in empty_str_cols) {
   clinical_data[[colname]] <- clean_categorical(clinical_data[[colname]])
 }
 
+# Safe lookup of counts from a table
+.safe_count <- function(tbl, v) {
+  n <- unname(tbl[as.character(v)])
+  if (is.na(n)) 0L else as.integer(n)
+}
 
 # ---- user's cohort helpers ----------------------------------------------------
 .parse_public_ids_from_file <- function(file_input) {
@@ -144,7 +149,6 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
 }
 
 
-
 filter_by_gene_expression <- function(clinical_data, gene = NULL,
                                       threshold_type = "value",
                                       min_value = NULL, max_value = NULL,
@@ -201,10 +205,10 @@ create_picker_input <- function(inputId, label, choices) {
       `actions-box` = TRUE,
       `deselect-all-text` = "None",
       `select-all-text` = "Select All",
-      `none-selected-text` = "None Selected"
+      `none-selected-text` = "All"
     ),
     multiple = TRUE,
-    selected = "All"
+    selected = NULL
   )
 }
 
@@ -264,7 +268,6 @@ create_cohort_filters_ui <- function(cohort_id, category) {
     )
   )
 }
-
 
 get_cohort_filters <- function(input, cohort_id, category) {
   if (category == "clinical") {
