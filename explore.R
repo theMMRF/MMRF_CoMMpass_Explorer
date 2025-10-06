@@ -567,3 +567,8 @@ clinical_data |> count(chr_1q21_gain, chr_1q21_amp)
 # 4           yes          yes  62
 
 table(clinical_data$chr_1q21_gain, clinical_data$chr_1q21_amp)
+
+# BulkRNA-seq filtereing, how bulkseq_tpm_baseline_cleaned.rds is created
+bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline.rds")
+bulkseq_tpm <- bulkseq_tpm[,intersect(colnames(bulkseq_tpm), clinical_data$Tumor_Sample_Barcode)]
+# saveRDS(bulkseq_tpm, "data/bulkseq_tpm_baseline_cleaned.rds")

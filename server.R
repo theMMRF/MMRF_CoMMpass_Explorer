@@ -289,60 +289,96 @@ shinyServer(function(input, output, session) {
     rbind(clinical_map, molecular_map)
   }
   
-  # Core updater for one cohort
   .update_picker_counts_for_cohort <- function(cohort_id) {
-    # current filters as entered (WITHOUT pressing Apply)
+    # categorical filters
     filters <- c(
       get_cohort_filters(input, cohort_id, "clinical"),
       get_cohort_filters(input, cohort_id, "molecular")
     )
     
-    # Build mapping
     mp <- .make_picker_map(cohort_id)
     
-    # For every picker, recompute counts conditioned on OTHER filters
     for (i in seq_len(nrow(mp))) {
       input_id   <- mp$inputId[i]
       filter_key <- mp$filter_key[i]
       colname    <- mp$column[i]
       
-      # Skip if this input doesn't exist yet (UI not mounted)
+      # control truly mounted?
       if (!(input_id %in% names(input))) next
       
-      # Exclude this one filter from the preview subset
+      # skip updating if this picker is currently open in the browser
+      open_id <- isolate(input$picker_open_id)
+      if (!is.null(open_id) && identical(open_id, input_id)) next
+      
+      # Exclude THIS picker’s own categorical filter; keep the rest
       filters_excl <- filters
       filters_excl[[filter_key]] <- NULL
       
+      # Start from full clinical, apply remaining categorical filters
       preview <- filter_cohort_data(copy(clinical_data), filters_excl)
       
-      # Use all possible values from the full dataset (so zero-count values still show)
+      # condition counts on non-categorical filters ----------
+      # Mutation rules
+      mut_rows <- if (cohort_id == "cohort1") mut_row_counter$cohort1 else mut_row_counter$cohort2
+      ids_mut  <- get_mutation_filtered_ids(input, cohort_id, mut_rows)
+      preview  <- preview[preview$Tumor_Sample_Barcode %in% ids_mut, ]
+      
+      # Gene expression
+      gene <- input[[paste0("gene_expr_search_", cohort_id)]]
+      if (!is.null(gene) && nzchar(gene)) {
+        preview <- filter_by_gene_expression(
+          clinical_data  = preview,
+          gene           = gene,
+          threshold_type = input[[paste0("expr_threshold_type_", cohort_id)]],
+          min_value      = input[[paste0("gene_expr_min_", cohort_id)]],
+          max_value      = input[[paste0("gene_expr_max_", cohort_id)]],
+          min_percentile = input[[paste0("gene_expr_percentile_min_", cohort_id)]],
+          max_percentile = input[[paste0("gene_expr_percentile_max_", cohort_id)]]
+        )
+      }
+      
+      # Survival
+      if (isTRUE(input[[paste0("enable_survival_filter_", cohort_id)]])) {
+        stype <- input[[paste0("surv_threshold_type_", cohort_id)]]
+        svar  <- input[[paste0("surv_variable_", cohort_id)]]
+        if (stype == "percentile") {
+          preview <- filter_by_survival(
+            preview, surv_var = svar, threshold_type = "percentile",
+            min_percentile = input[[paste0("surv_threshold_min_percentile_", cohort_id)]],
+            max_percentile = input[[paste0("surv_threshold_max_percentile_", cohort_id)]]
+          )
+        } else if (stype == "value") {
+          preview <- filter_by_survival(
+            preview, surv_var = svar, threshold_type = "value",
+            min_value = input[[paste0("surv_threshold_min_value_", cohort_id)]],
+            max_value = input[[paste0("surv_threshold_max_value_", cohort_id)]]
+          )
+        }
+      }
+      
+      # Respect loaded custom cohort IDs for live counts
+      allowed <- if (cohort_id == "cohort1") user_cohorts$c1_tsb else user_cohorts$c2_tsb
+      if (length(allowed)) {
+        preview <- preview[preview$Tumor_Sample_Barcode %in% allowed, ]
+      }
+      # ------------------------------------------------------------------------
+      
+      # Use all possible values from the full dataset (so zero-count levels show)
       all_vals <- sort(unique(na.omit(as.character(clinical_data[[colname]]))))
       if (length(all_vals) == 0) next
       
-      # Tally counts in preview subset
       tbl <- table(as.character(preview[[colname]]), useNA = "no")
-      
-      # Build labels "value (count)"
-      labels <- vapply(all_vals,
-                       function(v) paste0(v, " (", .safe_count(tbl, v), ")"),
-                       FUN.VALUE = character(1))
+      labels <- vapply(all_vals, function(v) paste0(v, " (", .safe_count(tbl, v), ")"), FUN.VALUE = character(1))
       choices_named <- setNames(all_vals, labels)
       
-      # Preserve existing selection (may be NULL/character(0))
       current_sel <- input[[input_id]]
       current_sel <- intersect(current_sel, all_vals)
       
-      # NEW: change detection
+      # change-detection cache to avoid dropdown-close jitter
       new_state <- list(labels = labels, selected = current_sel)
       old_state <- isolate(picker_state[[input_id]])
-      
       if (!.inputs_identical(old_state, new_state)) {
-        shinyWidgets::updatePickerInput(
-          session,
-          inputId = input_id,
-          choices = choices_named,
-          selected = current_sel
-        )
+        shinyWidgets::updatePickerInput(session, inputId = input_id, choices = choices_named, selected = current_sel)
         isolate(picker_state[[input_id]] <- new_state)
       }
     }

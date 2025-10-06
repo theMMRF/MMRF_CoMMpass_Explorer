@@ -9,7 +9,7 @@ lapply(packages, library, character.only = TRUE)
 
 # Load data ------
 bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
-bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline.rds")
+bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline_cleaned.rds")
 clinical_data <- readRDS("data/clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
 sc_meta <- readRDS("data/scRNAseq_metadata.rds")
