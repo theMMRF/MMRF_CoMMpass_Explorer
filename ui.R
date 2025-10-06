@@ -398,9 +398,9 @@ dashboardPage(
                ),
                
                fluidRow(
-                 box(title = NULL, width = 12,
+                 box(title = "TPM Distribution", width = 12,
                      selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk), width = "240px"),
-                     selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = NULL,
+                     selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = "KRAS",
                                     options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
                      plotlyOutput("pseudo_tpm_distr")
                  )

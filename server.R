@@ -1288,13 +1288,13 @@ shinyServer(function(input, output, session) {
     
     text <- sprintf(
       "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-       <strong>Cell type:</strong> %s<br>
        <strong>Total Samples:</strong> %d<br>
        <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-       <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
+       <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)<br>
+       <strong>Cell type:</strong> %s
        </div>",
-      dat$celltype, num_total, num_cohort1, ifelse(num_total==0, 0, num_cohort1/num_total*100),
-      num_cohort2, ifelse(num_total==0, 0, num_cohort2/num_total*100)
+      num_total, num_cohort1, ifelse(num_total==0, 0, num_cohort1/num_total*100),
+      num_cohort2, ifelse(num_total==0, 0, num_cohort2/num_total*100), dat$celltype
     )
     HTML(text)
   })
