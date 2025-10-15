@@ -1,5 +1,5 @@
 # Load dependencies -------
-packages <- c("shiny", "shinydashboard", "shinyWidgets", "shinyjs",
+packages <- c("shiny", "shinydashboard", "shinyWidgets", "shinyjs", "rintrojs",
               "tidyr", "dplyr", "DT", "data.table", "tibble", "gridExtra", "readxl",
               "ggplot2", "pheatmap", "ggrepel", "plotly",
               "maftools", "survival", "survminer", "limma", "DESeq2",
@@ -188,11 +188,8 @@ filter_by_survival <- function(clinical_data, surv_var, threshold_type,
   }
   
   filtered <- clinical_data[surv_data >= min_thresh & surv_data <= max_thresh, ]
-  cat("Here:", dim(filtered))
   return(filtered)
 }
-
-
 
 create_picker_input <- function(inputId, label, choices) {
   choices <- choices[!is.na(choices)]

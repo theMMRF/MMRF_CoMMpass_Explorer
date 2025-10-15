@@ -8,6 +8,79 @@ shinyServer(function(input, output, session) {
     identical(old$labels, new$labels) && identical(old$selected, new$selected)
   }
   
+  tour_stage <- reactiveVal("idle")
+  
+  observeEvent(input$start_tour, {
+    # -------- Phase 1: Custom Cohorts side --------
+    steps1 <- data.frame(
+      element = c(
+        "body",
+        "#how_it_works",
+        "#cohort1_upload",
+        "#cohort2_upload",
+        "#filters_sidebar",
+        "#apply_filters_wrap",
+        'a[data-value="Overall Summary"]'  # <- ask user to click
+      ),
+      intro = c(
+        "Welcome to CoMMpass Explorer! This tour highlights the main parts of the app.",
+        "Start here. This panel explains how to load public_ids as CSV/TXT or paste them directly.",
+        "Load or paste Cohort 1 patient IDs here. Click <b>Load Cohort 1 IDs</b>.",
+        "Do the same for Cohort 2. You can also download any unmatched IDs.",
+        "Use these filters to define cohorts (demographics, molecular features, etc.). Counts update live as you filter.",
+        "<b>Apply Filters</b> locks in your current settings across tabs.",
+        "Now click <b>Overall Summary</b> to continue the tour."
+      ),
+      position = c("floating","right","right","left","right","right","bottom"),
+      stringsAsFactors = FALSE
+    )
+    
+    rintrojs::introjs(
+      session,
+      options = list(
+        steps = steps1,
+        nextLabel = "Next", prevLabel = "Back", skipLabel = "Skip", doneLabel = "Finish",
+        showProgress = TRUE, showBullets = FALSE, scrollToElement = TRUE,
+        disableInteraction = FALSE, overlayOpacity = 0.35
+      )
+    )
+    
+    # Arm phase 2
+    tour_stage("await_summary")
+  })
+  
+  # -------- Phase 2: start when user actually switches to Overall Summary --------
+  observeEvent(input$main_tabs, {
+    if (identical(tour_stage(), "await_summary") && identical(input$main_tabs, "Overall Summary")) {
+      # small delay lets the tab content render before anchoring steps
+      later::later(function() {
+        steps2 <- data.frame(
+          element = c("#counts_card", "#summary_g1", "#summary_g2"),
+          intro = c(
+            "This card shows how many samples are in each cohort after filtering.",
+            "A quick summary of Cohort 1's clinical distributions.",
+            "And the same for Cohort 2."
+          ),
+          position = c("left","top","top"),
+          stringsAsFactors = FALSE
+        )
+        
+        rintrojs::introjs(
+          session,
+          options = list(
+            steps = steps2,
+            nextLabel = "Next", prevLabel = "Back", skipLabel = "Skip", doneLabel = "Finish",
+            showProgress = TRUE, showBullets = FALSE, scrollToElement = TRUE,
+            disableInteraction = FALSE, overlayOpacity = 0.35
+          )
+        )
+        tour_stage("done")
+      }, delay = 0.15)
+    }
+  })
+  
+  
+  
   # --- user-defined cohorts  --------------------------------------------------
   user_cohorts <- reactiveValues(
     c1_public = character(), c2_public = character(),

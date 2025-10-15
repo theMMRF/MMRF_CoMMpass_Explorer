@@ -3,143 +3,155 @@ source("global.R")
 dashboardPage(
   # skin = "purple",
   # Header
-  dashboardHeader(title = "CoMMpass Explorer"),
+  dashboardHeader(
+    title = "CoMMpass Explorer",
+    # Add a tour button in the header (right side)
+    tags$li(class = "dropdown",
+            actionButton("start_tour", "Interactive Tour", icon = icon("question-circle"))
+    )
+  ),
   
   # Sidebar
   dashboardSidebar(
     useShinyjs(),
-    sidebarMenu(
-      id = "sidebarMenu",
-      
-      # Filters
-      menuItem("Cohort 1 Filters", icon = icon("filter"),
-               div(id = "cohort1_filters",
-                   menuItem("Clinical Features", icon = icon("heartbeat"),
-                            create_cohort_filters_ui("cohort1", "clinical")),
-                   menuItem("Molecular Features", icon = icon("dna"),
-                            create_cohort_filters_ui("cohort1", "molecular")),
-                   menuItem("Gene Mutations", icon = icon("vial"),
-                            actionButton("add_mut_row_cohort1", "Add Mutation Rule"),
-                            actionButton("remove_mut_row_cohort1", "Remove Last Rule"),
-                            uiOutput("mutation_rules_cohort1")
-                   ),
-                   
-                   menuItem("Gene Expression", icon = icon("chart-line"),
-                            selectizeInput("gene_expr_search_cohort1", "Gene", choices = NULL),
-                            radioButtons("expr_threshold_type_cohort1", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
-                            conditionalPanel(
-                              condition = "input.expr_threshold_type_cohort1 == 'percentile'",
-                              fluidRow(
-                                column(6, numericInput("gene_expr_percentile_min_cohort1", "Min Percentile", value = 0, min = 0, max = 100)),
-                                column(6, numericInput("gene_expr_percentile_max_cohort1", "Max Percentile", value = 100, min = 0, max = 100))
-                              )
-                            ),
-                            conditionalPanel(
-                              condition = "input.expr_threshold_type_cohort1 == 'value'",
-                              fluidRow(
-                                column(6, numericInput("gene_expr_min_cohort1", "Min Expression", value = NULL)),
-                                column(6, numericInput("gene_expr_max_cohort1", "Max Expression", value = NULL))
-                              )
-                            )
-                   ),
-                   
-                   menuItem("Survival Filter", icon = icon("hourglass-half"),
-                            checkboxInput("enable_survival_filter_cohort1", "Enable", FALSE),
-                            conditionalPanel(
-                              condition = "input.enable_survival_filter_cohort1 == true",
-                              radioButtons("surv_threshold_type_cohort1", "Type", choices = c("value", "percentile"), selected = "value"),
-                              selectInput("surv_variable_cohort1", "Variable", choices = c("PFS_censored", "OS_censored"), selected = "OS_censored"),
-                              
-                              conditionalPanel(
-                                condition = "input.surv_threshold_type_cohort1 == 'value'",
-                                fluidRow(
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_value_cohort1", "Min Days", value = NULL))),
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_value_cohort1", "Max Days", value = NULL)))
+    div(id = "filters_sidebar",
+        sidebarMenu(
+          id = "sidebarMenu",
+          
+          # Filters
+          menuItem("Cohort 1 Filters", icon = icon("filter"),
+                   div(id = "cohort1_filters",
+                       menuItem("Clinical Features", icon = icon("heartbeat"),
+                                create_cohort_filters_ui("cohort1", "clinical")),
+                       menuItem("Molecular Features", icon = icon("dna"),
+                                create_cohort_filters_ui("cohort1", "molecular")),
+                       menuItem("Gene Mutations", icon = icon("vial"),
+                                actionButton("add_mut_row_cohort1", "Add Mutation Rule"),
+                                actionButton("remove_mut_row_cohort1", "Remove Last Rule"),
+                                uiOutput("mutation_rules_cohort1")
+                       ),
+                       
+                       menuItem("Gene Expression", icon = icon("chart-line"),
+                                selectizeInput("gene_expr_search_cohort1", "Gene", choices = NULL),
+                                radioButtons("expr_threshold_type_cohort1", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
+                                conditionalPanel(
+                                  condition = "input.expr_threshold_type_cohort1 == 'percentile'",
+                                  fluidRow(
+                                    column(6, numericInput("gene_expr_percentile_min_cohort1", "Min Percentile", value = 0, min = 0, max = 100)),
+                                    column(6, numericInput("gene_expr_percentile_max_cohort1", "Max Percentile", value = 100, min = 0, max = 100))
+                                  )
+                                ),
+                                conditionalPanel(
+                                  condition = "input.expr_threshold_type_cohort1 == 'value'",
+                                  fluidRow(
+                                    column(6, numericInput("gene_expr_min_cohort1", "Min Expression", value = NULL)),
+                                    column(6, numericInput("gene_expr_max_cohort1", "Max Expression", value = NULL))
+                                  )
                                 )
-                              ),
-                              conditionalPanel(
-                                condition = "input.surv_threshold_type_cohort1 == 'percentile'",
-                                fluidRow(
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_percentile_cohort1", "Min Percentile", value = 0, min = 0, max = 100))),
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_percentile_cohort1", "Max Percentile", value = 100, min = 0, max = 100)))
+                       ),
+                       
+                       menuItem("Survival Filter", icon = icon("hourglass-half"),
+                                checkboxInput("enable_survival_filter_cohort1", "Enable", FALSE),
+                                conditionalPanel(
+                                  condition = "input.enable_survival_filter_cohort1 == true",
+                                  radioButtons("surv_threshold_type_cohort1", "Type", choices = c("value", "percentile"), selected = "value"),
+                                  selectInput("surv_variable_cohort1", "Variable", choices = c("PFS_censored", "OS_censored"), selected = "OS_censored"),
+                                  
+                                  conditionalPanel(
+                                    condition = "input.surv_threshold_type_cohort1 == 'value'",
+                                    fluidRow(
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_value_cohort1", "Min Days", value = NULL))),
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_value_cohort1", "Max Days", value = NULL)))
+                                    )
+                                  ),
+                                  conditionalPanel(
+                                    condition = "input.surv_threshold_type_cohort1 == 'percentile'",
+                                    fluidRow(
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_percentile_cohort1", "Min Percentile", value = 0, min = 0, max = 100))),
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_percentile_cohort1", "Max Percentile", value = 100, min = 0, max = 100)))
+                                    )
+                                  )
                                 )
-                              )
-                            )
-                   )
-               ),
-               actionButton("clear_cohort1", "Clear All Cohort 1 Filters", icon = icon("times")) # Clear button for Cohort 1
-      ),
-      
-      menuItem("Cohort 2 Filters", icon = icon("filter"),
-               div(id = "cohort2_filters",
-                   menuItem("Clinical Features", icon = icon("heartbeat"),
-                            create_cohort_filters_ui("cohort2", "clinical")),
-                   menuItem("Molecular Features", icon = icon("dna"),
-                            create_cohort_filters_ui("cohort2", "molecular")),
-                   menuItem("Gene Mutations", icon = icon("vial"),
-                            actionButton("add_mut_row_cohort2", "Add Mutation Rule"),
-                            actionButton("remove_mut_row_cohort2", "Remove Last Rule"),
-                            uiOutput("mutation_rules_cohort2")
+                       )
                    ),
-                   
-                   menuItem("Gene Expression", icon = icon("chart-line"),
-                            selectizeInput("gene_expr_search_cohort2", "Gene", choices = NULL),
-                            radioButtons("expr_threshold_type_cohort2", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
-                            conditionalPanel(
-                              condition = "input.expr_threshold_type_cohort2 == 'percentile'",
-                              fluidRow(
-                                column(6, numericInput("gene_expr_percentile_min_cohort2", "Min Percentile", value = 0, min = 0, max = 100)),
-                                column(6, numericInput("gene_expr_percentile_max_cohort2", "Max Percentile", value = 100, min = 0, max = 100))
-                              )
-                            ),
-                            conditionalPanel(
-                              condition = "input.expr_threshold_type_cohort2 == 'value'",
-                              fluidRow(
-                                column(6, numericInput("gene_expr_min_cohort2", "Min Expression", value = NULL)),
-                                column(6, numericInput("gene_expr_max_cohort2", "Max Expression", value = NULL))
-                              )
-                            )
+                   actionButton("clear_cohort1", "Clear All Cohort 1 Filters", icon = icon("times")) # Clear button for Cohort 1
+          ),
+          
+          menuItem("Cohort 2 Filters", icon = icon("filter"),
+                   div(id = "cohort2_filters",
+                       menuItem("Clinical Features", icon = icon("heartbeat"),
+                                create_cohort_filters_ui("cohort2", "clinical")),
+                       menuItem("Molecular Features", icon = icon("dna"),
+                                create_cohort_filters_ui("cohort2", "molecular")),
+                       menuItem("Gene Mutations", icon = icon("vial"),
+                                actionButton("add_mut_row_cohort2", "Add Mutation Rule"),
+                                actionButton("remove_mut_row_cohort2", "Remove Last Rule"),
+                                uiOutput("mutation_rules_cohort2")
+                       ),
+                       
+                       menuItem("Gene Expression", icon = icon("chart-line"),
+                                selectizeInput("gene_expr_search_cohort2", "Gene", choices = NULL),
+                                radioButtons("expr_threshold_type_cohort2", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
+                                conditionalPanel(
+                                  condition = "input.expr_threshold_type_cohort2 == 'percentile'",
+                                  fluidRow(
+                                    column(6, numericInput("gene_expr_percentile_min_cohort2", "Min Percentile", value = 0, min = 0, max = 100)),
+                                    column(6, numericInput("gene_expr_percentile_max_cohort2", "Max Percentile", value = 100, min = 0, max = 100))
+                                  )
+                                ),
+                                conditionalPanel(
+                                  condition = "input.expr_threshold_type_cohort2 == 'value'",
+                                  fluidRow(
+                                    column(6, numericInput("gene_expr_min_cohort2", "Min Expression", value = NULL)),
+                                    column(6, numericInput("gene_expr_max_cohort2", "Max Expression", value = NULL))
+                                  )
+                                )
+                       ),
+                       menuItem("Survival Filter", icon = icon("hourglass-half"),
+                                checkboxInput("enable_survival_filter_cohort2", "Enable", FALSE),
+                                conditionalPanel(
+                                  condition = "input.enable_survival_filter_cohort2 == true",
+                                  radioButtons("surv_threshold_type_cohort2", "Type", choices = c("value", "percentile"), selected = "value"),
+                                  selectInput("surv_variable_cohort2", "Variable", choices = c("PFS_censored", "OS_censored"), selected = "OS_censored"),
+                                  
+                                  conditionalPanel(
+                                    condition = "input.surv_threshold_type_cohort2 == 'value'",
+                                    fluidRow(
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_value_cohort2", "Min Days", value = NULL))),
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_value_cohort2", "Max Days", value = NULL)))
+                                    )
+                                  ),
+                                  conditionalPanel(
+                                    condition = "input.surv_threshold_type_cohort2 == 'percentile'",
+                                    fluidRow(
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_percentile_cohort2", "Min Percentile", value = 0, min = 0, max = 100))),
+                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_percentile_cohort2", "Max Percentile", value = 100, min = 0, max = 100)))
+                                    )
+                                  )
+                                )
+                       )
                    ),
-                   menuItem("Survival Filter", icon = icon("hourglass-half"),
-                            checkboxInput("enable_survival_filter_cohort2", "Enable", FALSE),
-                            conditionalPanel(
-                              condition = "input.enable_survival_filter_cohort2 == true",
-                              radioButtons("surv_threshold_type_cohort2", "Type", choices = c("value", "percentile"), selected = "value"),
-                              selectInput("surv_variable_cohort2", "Variable", choices = c("PFS_censored", "OS_censored"), selected = "OS_censored"),
-                              
-                              conditionalPanel(
-                                condition = "input.surv_threshold_type_cohort2 == 'value'",
-                                fluidRow(
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_value_cohort2", "Min Days", value = NULL))),
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_value_cohort2", "Max Days", value = NULL)))
-                                )
-                              ),
-                              conditionalPanel(
-                                condition = "input.surv_threshold_type_cohort2 == 'percentile'",
-                                fluidRow(
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_percentile_cohort2", "Min Percentile", value = 0, min = 0, max = 100))),
-                                  column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_percentile_cohort2", "Max Percentile", value = 100, min = 0, max = 100)))
-                                )
-                              )
-                            )
-                   )
-               ),
-               actionButton("clear_cohort2", "Clear All Cohort 2 Filters", icon = icon("times"))
-      ),
-      
-      actionButton("apply_filters", "Apply Filters", icon = icon("play"), class = "btn-primary")
+                   actionButton("clear_cohort2", "Clear All Cohort 2 Filters", icon = icon("times"))
+          ),
+          div(id = "apply_filters_wrap",
+              actionButton("apply_filters", "Apply Filters", icon = icon("play"), class = "btn-primary")
+          )
+        )
     )
+    
   ),
   
   # Dashboard
   dashboardBody(
+    rintrojs::introjsUI(),
     tags$head(
       tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
     ),
     tabsetPanel(
-      tabPanel("Custom Cohorts",
+      id = "main_tabs",
+      tabPanel("Custom Cohorts", value = "Custom Cohorts",
                fluidRow(
-                 box(title = "How it works", width = 12,
+                 box(title = "How it works", width = 12, id = "how_it_works",
                      HTML("<ul style='margin-bottom:0'>
              <li>Upload a CSV/TXT <em>or</em> paste <code>public_id</code>s (e.g., <code>MMRF_1013_1</code>), one per line or comma-separated.</li>
              <li>Click <strong>Load</strong> for each cohort.</li>
@@ -149,43 +161,43 @@ dashboardPage(
                ),
                fluidRow(
                  column(6,
-                        box(title = "Cohort 1", width = 12,
-                            fileInput("upload_cohort1", "Upload Cohort 1 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
-                            textAreaInput("paste_cohort1", "Or paste public_ids", rows = 5, placeholder = "MMRF_1007_1\nMMRF_1013_1\n..."),
-                            actionButton("load_cohort1", "Load Cohort 1 IDs"),
-                            downloadButton("download_unmatched_c1", "Download unmatched IDs"),
-                            tags$hr(),
-                            verbatimTextOutput("cohort1_status"),
-                            DTOutput("cohort1_preview")
+                        div(id = "cohort1_upload",
+                            box(title = "Cohort 1", width = 12,
+                                fileInput("upload_cohort1", "Upload Cohort 1 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
+                                textAreaInput("paste_cohort1", "Or paste public_ids", rows = 5, placeholder = "MMRF_1007_1\nMMRF_1013_1\n..."),
+                                actionButton("load_cohort1", "Load Cohort 1 IDs"),
+                                downloadButton("download_unmatched_c1", "Download unmatched IDs"),
+                                tags$hr(),
+                                verbatimTextOutput("cohort1_status"),
+                                DTOutput("cohort1_preview")
+                            )
                         )
                  ),
                  column(6,
-                        box(title = "Cohort 2", width = 12,
-                            fileInput("upload_cohort2", "Upload Cohort 2 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
-                            textAreaInput("paste_cohort2", "Or paste public_ids", rows = 5, placeholder = "MMRF_1020_1\nMMRF_1055_1\n..."),
-                            actionButton("load_cohort2", "Load Cohort 2 IDs"),
-                            downloadButton("download_unmatched_c2", "Download unmatched IDs"),
-                            tags$hr(),
-                            verbatimTextOutput("cohort2_status"),
-                            DTOutput("cohort2_preview")
+                        div(id = "cohort2_upload",
+                            box(title = "Cohort 2", width = 12,
+                                fileInput("upload_cohort2", "Upload Cohort 2 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
+                                textAreaInput("paste_cohort2", "Or paste public_ids", rows = 5, placeholder = "MMRF_1020_1\nMMRF_1055_1\n..."),
+                                actionButton("load_cohort2", "Load Cohort 2 IDs"),
+                                downloadButton("download_unmatched_c2", "Download unmatched IDs"),
+                                tags$hr(),
+                                verbatimTextOutput("cohort2_status"),
+                                DTOutput("cohort2_preview")
+                            )
                         )
                  )
                )
       ),
-      tabPanel("Overall Summary",
+      tabPanel("Overall Summary", value = "Overall Summary",
                fluidRow(
-                 column(6, htmlOutput("clinicalNum")),
+                 column(6, div(id = "counts_card", htmlOutput("clinicalNum"))),
                  column(6, align = "right", downloadButton("download_clinical", "Download Filtered Clinical Data"))
                ),
                
                fluidRow(
-                 box(title = "Cohort 1", width = 6,
-                     plotOutput("summaryPlot_g1")
-                 ),
+                 box(title = "Cohort 1", width = 6, id = "summary_g1", plotOutput("summaryPlot_g1")),
+                 box(title = "Cohort 2", width = 6, id = "summary_g2", plotOutput("summaryPlot_g2"))
                  
-                 box(title = "Cohort 2", width = 6,
-                     plotOutput("summaryPlot_g2")
-                 )
                ),
                
                fluidRow(
@@ -217,7 +229,7 @@ dashboardPage(
                
       ),
       
-      tabPanel("Mutational Profile",
+      tabPanel("Mutational Profile", value = "Mutational Profile",
                fluidRow(
                  column(12, htmlOutput("mafNum"))
                ),
@@ -293,7 +305,7 @@ dashboardPage(
                ),
       ),
       
-      tabPanel("Tumor Profile",
+      tabPanel("Tumor Profile", value = "Tumor Profile",
                fluidRow(
                  column(12, htmlOutput("bulkNum"))
                ),
@@ -362,7 +374,7 @@ dashboardPage(
                )
       ),
       
-      tabPanel("Immune Microenvironment",
+      tabPanel("Immune Microenvironment", value = "Immune Microenvironment",
                fluidRow(
                  column(12, htmlOutput("scNum"))
                ),
@@ -392,7 +404,7 @@ dashboardPage(
                  )
                )
       ),
-      tabPanel("Pseudo‑Bulk",
+      tabPanel("Pseudo‑Bulk", value = "Pseudo-Bulk",
                fluidRow(
                  column(12, htmlOutput("pseudoNum"))
                ),
