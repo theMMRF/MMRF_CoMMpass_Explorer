@@ -534,101 +534,7 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   )
 }
 
-
-# Perform statistical test for categorical variables
-# ---------- helpers ----------
-safe_dir <- function(delta, up_lbl = "Cohort1 ↑", down_lbl = "Cohort2 ↑") {
-  if (is.na(delta)) return("NA")
-  if (delta > 0) up_lbl else if (delta < 0) down_lbl else "Tie"
-}
-
-cohens_d <- function(x, y) {
-  x <- x[!is.na(x)]; y <- y[!is.na(y)]
-  n1 <- length(x); n2 <- length(y)
-  if (n1 < 2 || n2 < 2) return(NA_real_)
-  s1 <- stats::sd(x); s2 <- stats::sd(y)
-  sp <- sqrt(((n1 - 1)*s1^2 + (n2 - 1)*s2^2) / (n1 + n2 - 2))
-  if (!is.finite(sp) || sp == 0) return(NA_real_)
-  (mean(x) - mean(y)) / sp
-}
 # --------------------------------
-
-# Modify: test_continuous_variable()
-test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
-  cohort1_vals <- cohort1_vals[!is.na(cohort1_vals)]
-  cohort2_vals <- cohort2_vals[!is.na(cohort2_vals)]
-  
-  if (length(cohort1_vals) <= 2 || length(cohort2_vals) <= 2) {
-    return(list(
-      test_name = "Insufficient data",
-      statistic = "NA",
-      p_value = NA,
-      cohort1_summary = "Insufficient data",
-      cohort2_summary = "Insufficient data",
-      direction = "NA",
-      effect = "NA"
-    ))
-  }
-  
-  # normality
-  normal1 <- tryCatch(shapiro.test(cohort1_vals)$p.value > 0.05, error = function(e) FALSE)
-  normal2 <- tryCatch(shapiro.test(cohort2_vals)$p.value > 0.05, error = function(e) FALSE)
-  
-  # defaults
-  effect_num <- NA_real_
-  effect_label <- "NA"
-  direction <- "NA"
-  
-  if (normal1 && normal2 && length(cohort1_vals) >= 3 && length(cohort2_vals) >= 3) {
-    # t-test
-    test_result <- tryCatch(t.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
-    test_name <- "t-test"
-    if (!is.null(test_result)) {
-      statistic <- paste0("t = ", round(test_result$statistic, 3))
-      p_value <- test_result$p.value
-      # Direction & effect: mean difference (+ Cohen's d)
-      m1 <- mean(cohort1_vals); m2 <- mean(cohort2_vals)
-      effect_num <- m1 - m2
-      d <- cohens_d(cohort1_vals, cohort2_vals)
-      direction <- safe_dir(effect_num)
-      effect_label <- paste0("Δmean = ", round(effect_num, 2),
-                             if (!is.na(d)) paste0(" (Cohen's d = ", round(d, 2), ")") else "")
-    } else {
-      statistic <- "NA"; p_value <- NA
-    }
-  } else {
-    # Mann-Whitney
-    test_result <- tryCatch(wilcox.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
-    test_name <- "Mann-Whitney U"
-    if (!is.null(test_result)) {
-      statistic <- paste0("W = ", round(test_result$statistic, 3))
-      p_value <- test_result$p.value
-      # Direction & effect: median difference
-      med1 <- stats::median(cohort1_vals); med2 <- stats::median(cohort2_vals)
-      effect_num <- med1 - med2
-      direction <- safe_dir(effect_num)
-      effect_label <- paste0("Δmedian = ", round(effect_num, 2))
-    } else {
-      statistic <- "NA"; p_value <- NA
-    }
-  }
-  
-  cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals), 2),
-                            " (SD: ", round(sd(cohort1_vals), 2), ")")
-  cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals), 2),
-                            " (SD: ", round(sd(cohort2_vals), 2), ")")
-  
-  list(
-    test_name = test_name,
-    statistic = statistic,
-    p_value = p_value,
-    cohort1_summary = cohort1_summary,
-    cohort2_summary = cohort2_summary,
-    direction = direction,
-    effect = effect_label
-  )
-}
-
 # Modify: test_categorical_variable()
 test_categorical_variable <- function(data, feature) {
   contingency_table <- tryCatch(table(data$cohort, data[[feature]], useNA = "no"),
@@ -1030,11 +936,12 @@ tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     rename(!!value_type := all_of(gene_interested))
-  
+  ycol <- if (data_type == "scRNAseq") "CPM" else "TPM"
+  max_y <- max(gene_data[[ycol]], na.rm = TRUE)
   # Create the boxplot
   p <- ggboxplot(gene_data, x = "cohort", y = value_type,
                  color = "cohort", add = "jitter") +
-    stat_compare_means(method = "wilcox.test", label = "p.format", label.y = max(gene_data$TPM) * 1.1) +
+    stat_compare_means(method = "wilcox.test", label = "p.format", label.y = max_y * 1.1) +
     labs(x = "Cohort",
          y = paste(value_type, " of", gene_interested))
   
