@@ -10,17 +10,17 @@ lapply(packages, library, character.only = TRUE)
 # Load data ------
 bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline_cleaned.rds")
-clinical_data <- readRDS("data/clinical_data_n1411.rds")
+clinical_data <- readRDS("clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
-sc_meta <- readRDS("data/scRNAseq_metadata.rds")
+sc_meta <- readRDS("data/sc_meta_manuscript.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
-pseudo_bulk <- readRDS("data/pseudobulk_data.rds")
+pseudo_bulk_counts <- readRDS("data/pseudobulk_data_manuscript_Counts.rds")
+pseudo_bulk_norm <- readRDS("data/pseudobulk_data_manuscript_LogNormalize.rds")
 
 clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
-
 
 clean_categorical <- function(x) {
   x <- as.character(x)
@@ -414,14 +414,33 @@ create_categorical_plot <- function(data, feature, feature_label) {
 # Create distribution plot data for continuous variables
 create_continuous_plot <- function(data, feature, feature_label) {
   data <- data %>%
-    mutate(label = paste0("Cohort: ", cohort,
-                          "<br>", feature_label, ": ", sprintf("%.2f", !!sym(feature))))
+    dplyr::mutate(
+      label = paste0(
+        "Cohort: ", cohort,
+        "<br>", feature_label, ": ", sprintf("%.2f", !!rlang::sym(feature))
+      )
+    )
   
-  ggplot(data, aes_string(x = "cohort", y = feature, fill = "cohort", text = "label")) +
-    geom_boxplot(outlier.alpha = 0.4) +
-    labs(x = "Cohort", y = feature_label) +
+  ggplot(data, aes_string(x = "cohort", y = feature, fill = "cohort")) +
+    # Cleaner boxplot
+    geom_boxplot(width = 0.5, outlier.shape = NA, color = "#2b2b2b", alpha = 0.9) +
+    # Light jitter to reveal distribution
+    geom_jitter(aes_string(text = "label", color = "cohort"),
+                width = 0.12, size = 1.6, alpha = 0.45, show.legend = FALSE) +
+    # Emphasize the median
+    stat_summary(fun = median, geom = "point",
+                 shape = 21, size = 3.2, fill = "white", color = "black") +
     scale_fill_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
-    theme_minimal()
+    scale_color_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
+    labs(x = "Cohort", y = feature_label) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(margin = margin(t = 4)),
+      axis.title.x = element_text(margin = margin(t = 6)),
+      axis.title.y = element_text(margin = margin(r = 6))
+    )
 }
 
 # Main function to create distribution plot
@@ -751,6 +770,33 @@ get_continuous_features <- function() {
   c("Age", "BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
 }
 
+.check_duplicate_samples <- function(count_mat, clin, sample_col = "Tumor_Sample_Barcode", context = "bulkRNA-seq") {
+  # what DESeq2 will use as rownames
+  ids_from_counts <- colnames(count_mat)
+  ids_from_clin   <- as.character(clin[[sample_col]])
+  
+  dup_counts <- unique(ids_from_counts[duplicated(ids_from_counts)])
+  dup_clin   <- unique(ids_from_clin[duplicated(ids_from_clin)])
+  
+  if (length(dup_counts) || length(dup_clin)) {
+    # Build a short, user-friendly message
+    list_preview <- function(x) {
+      if (length(x) == 0) return("None")
+      if (length(x) <= 10) paste(x, collapse = ", ")
+      else paste(paste(x[1:10], collapse = ", "), sprintf("… (+%d more)", length(x) - 10))
+    }
+    msg <- paste0(
+      "Differential gene expression analysis failed because at least one same sample detected in both cohorts.<br>",
+      "Please resolve and try again."
+    )
+    showNotification(
+      htmltools::HTML(msg),
+      type = "error",
+      duration = 10
+    )
+    validate(need(FALSE, msg))
+  }
+}
 
 # Function to process DESeq2 -----
 process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) {
@@ -758,6 +804,8 @@ process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) 
   clinical_combined <- clinical_combined[clinical_combined$Tumor_Sample_Barcode %in% colnames(bulkseq),]
   count_data <- bulkseq[, clinical_combined$Tumor_Sample_Barcode]
   count_data <- round(count_data)
+  
+  .check_duplicate_samples(count_data, clinical_combined, context = "bulk RNA-seq (DESeq2)")
   
   # Create metadata
   metadata <- data.frame(
@@ -784,61 +832,125 @@ process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) 
 }
 
 # Function for volcano plot
-deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcano") {
+deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcano",
+                                  n_labels = 10, point_alpha = 0.7, sig_size = 7,
+                                  nonsig_size = 5, palette = c(
+                                    "Not significant" = "#B3B3B3",  # grey70
+                                    "Up-regulated"    = "#D55E00",  # vermilion
+                                    "Down-regulated"  = "#0072B2"   # blue
+                                  )) {
+  stopifnot(all(c("log2FoldChange","padj") %in% colnames(deseq2_result)))
+  
   df <- deseq2_result %>%
-    rownames_to_column("gene") %>%
-    mutate(
-      neglog10padj = -log10(padj),
-      significant = case_when(
+    tibble::rownames_to_column("gene") %>%
+    dplyr::mutate(
+      padj = as.numeric(padj),
+      # avoid -log10(0) = Inf and keep NAs out of the way
+      padj_safe = dplyr::if_else(!is.finite(padj) | is.na(padj) | padj == 0, 1, padj),
+      neglog10padj = -log10(padj_safe),
+      significant = dplyr::case_when(
         padj < p_thr & log2FoldChange >  logfc_thr ~ "Up-regulated",
         padj < p_thr & log2FoldChange < -logfc_thr ~ "Down-regulated",
         TRUE ~ "Not significant"
       ),
+      point_size = dplyr::if_else(significant == "Not significant", nonsig_size, sig_size),
       tooltip = paste0(
         "<b>", gene, "</b>",
         "<br>log2FC: ", signif(log2FoldChange, 3),
-        "<br>padj: ", signif(padj, 3),
+        "<br>padj: ", ifelse(is.na(padj), "NA", signif(padj, 3)),
         "<br>status: ", significant
       )
     )
   
-  # axis limits for threshold lines
+  # axis limits for threshold lines (symmetric x-range feels cleaner)
   xmax <- max(abs(df$log2FoldChange), na.rm = TRUE)
   ymax <- max(df$neglog10padj, na.rm = TRUE)
+  ythr <- -log10(p_thr)
   
-  cols <- c("Not significant" = "grey", "Up-regulated" = "red", "Down-regulated" = "blue")
-  
-  p <- plot_ly(
+  p <- plotly::plot_ly(
     data = df, source = src,
     x = ~log2FoldChange, y = ~neglog10padj,
     type = "scattergl", mode = "markers",
-    color = ~significant, colors = cols,
+    color = ~significant, colors = palette,
     text = ~tooltip, hoverinfo = "text",
-    key = ~gene, marker = list(size = 6, line = list(width = 0.3, color = "rgba(0,0,0,0.3)"))
+    key = ~gene,
+    marker = list(
+      size = ~point_size,
+      opacity = point_alpha,
+      line = list(width = 0.4, color = "rgba(0,0,0,0.25)")
+    )
   ) %>%
-    layout(
-      xaxis = list(title = "Log2 Fold Change", zeroline = FALSE),
-      yaxis = list(title = "-Log10 adjusted p-value"),
-      legend = list(orientation = "h", x = 0, y = 1.1),
+    plotly::layout(
+      template = "plotly_white",
+      hovermode = "closest",
+      margin = list(l = 60, r = 20, t = 35, b = 55),
+      font = list(family = "Helvetica, Arial, sans-serif", size = 13),
+      xaxis = list(
+        title = "log<sub>2</sub> fold change",
+        zeroline = FALSE,
+        range = c(-xmax, xmax),
+        gridcolor = "rgba(0,0,0,0.07)"
+      ),
+      yaxis = list(
+        title = "-log<sub>10</sub> adjusted p-value",
+        rangemode = "tozero",
+        gridcolor = "rgba(0,0,0,0.07)"
+      ),
+      legend = list(
+        title = list(text = "<b>Status</b>"),
+        orientation = "h", x = 0, y = 1.12, xanchor = "left"
+      ),
       shapes = list(
         # vertical FC thresholds
-        list(type = "line", x0 =  logfc_thr, x1 =  logfc_thr, xref = "x", y0 = 0, y1 = ymax, yref = "y",
-             line = list(dash = "dot", width = 1)),
-        list(type = "line", x0 = -logfc_thr, x1 = -logfc_thr, xref = "x", y0 = 0, y1 = ymax, yref = "y",
-             line = list(dash = "dot", width = 1)),
+        list(type = "line", x0 =  logfc_thr, x1 =  logfc_thr, xref = "x",
+             y0 = 0, y1 = ymax, yref = "y",
+             line = list(color = "rgba(0,0,0,0.35)", dash = "dot", width = 1.5)),
+        list(type = "line", x0 = -logfc_thr, x1 = -logfc_thr, xref = "x",
+             y0 = 0, y1 = ymax, yref = "y",
+             line = list(color = "rgba(0,0,0,0.35)", dash = "dot", width = 1.5)),
         # horizontal p-value threshold
-        list(type = "line", x0 = -xmax, x1 = xmax, xref = "x", y0 = -log10(p_thr), y1 = -log10(p_thr), yref = "y",
-             line = list(dash = "dot", width = 1))
+        list(type = "line", x0 = -xmax, x1 = xmax, xref = "x",
+             y0 = ythr, y1 = ythr, yref = "y",
+             line = list(color = "rgba(0,0,0,0.35)", dash = "dot", width = 1.5))
+      ),
+      annotations = list(
+        # tiny labels on threshold lines for clarity
+        list(x =  logfc_thr, y = ymax, xref = "x", yref = "y",
+             text = paste0("|log2FC| ≥ ", signif(logfc_thr, 3)),
+             ax = 10, ay = -20, showarrow = TRUE, arrowwidth = 1, arrowsize = 0.6,
+             font = list(size = 11), bgcolor = "rgba(255,255,255,0.7)", bordercolor = "rgba(0,0,0,0.2)"),
+        list(x =  0, y = ythr, xref = "x", yref = "y",
+             text = paste0("padj ≤ ", format(p_thr, digits = 2, scientific = TRUE)),
+             ax = 0, ay = -25, showarrow = TRUE, arrowwidth = 1, arrowsize = 0.6,
+             font = list(size = 11), bgcolor = "rgba(255,255,255,0.7)", bordercolor = "rgba(0,0,0,0.2)")
       )
+    ) %>%
+    # cleaner hover text
+    plotly::style(hoverlabel = list(bgcolor = "white", bordercolor = "rgba(0,0,0,0.2)", font = list(size = 12))) %>%
+    # nicer export button
+    plotly::config(
+      displaylogo = FALSE,
+      modeBarButtonsToRemove = c("autoScale2d","lasso2d","select2d","toggleSpikelines"),
+      toImageButtonOptions = list(format = "png", filename = "volcano_plot")
     )
   
-  # optional labels for top significant genes
-  top_genes <- df %>% filter(significant != "Not significant") %>% arrange(padj) %>% slice(1:10)
-  if (nrow(top_genes) > 0) {
-    p <- p %>% add_text(
-      data = top_genes, x = ~log2FoldChange, y = ~neglog10padj,
-      text = ~gene, textposition = "top center", showlegend = FALSE
-    )
+  # labels for top significant genes (by padj)
+  lab_df <- df %>%
+    dplyr::filter(significant != "Not significant" & is.finite(padj)) %>%
+    dplyr::arrange(padj) %>%
+    dplyr::slice(seq_len(min(n_labels, dplyr::n()))) %>%
+    dplyr::mutate(label = htmltools::htmlEscape(as.character(gene)))
+  
+  if (nrow(lab_df) > 0) {
+    p <- p %>%
+      plotly::add_trace(
+        data = lab_df,
+        x = ~log2FoldChange, y = ~neglog10padj,
+        type = "scatter", mode = "text",
+        text = ~label, textposition = "top center",
+        textfont = list(size = 11, color = "black"),
+        hoverinfo = "skip", showlegend = FALSE
+      )
   }
   p
 }
@@ -848,7 +960,7 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
   # Merge the datasets
   value_type <- "TPM"
   if (data_type=="scRNAseq") {
-    value_type <- "CPM"
+    value_type <- "Log-normalized Expression"
   } else {
     if (data_type=="bulkRNAseq") {
       value_type <- "TPM"
@@ -1282,7 +1394,8 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
 
 # Make sure a pseudobulk matrix is numeric and well‑formed
 .get_pb_matrix <- function(pb_list, celltype) {
-  stopifnot(celltype %in% names(pb_list))
+  if (is.null(pb_list) || !is.list(pb_list)) stop("Invalid pseudobulk object")
+  if (!(celltype %in% names(pb_list))) stop(sprintf("Cell type '%s' not found.", celltype))
   mat <- pb_list[[celltype]]
   if (!is.matrix(mat)) mat <- as.matrix(mat)
   storage.mode(mat) <- "numeric"
@@ -1309,37 +1422,22 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
   list(pb_tpm = pb_tpm2, clinical_aligned = clin_one, inter_base_ids = inter)
 }
 
-# Pseudobulk differential analysis (non‑count). Uses Wilcoxon rank‑sum + log2FC
-# Inputs: pb_tpm (genes x samples), clin (with $cohort)
-# Returns: data.frame with baseMean, log2FoldChange, pval, padj
-pseudobulk_diff <- function(pb_tpm, clin) {
-  stopifnot(ncol(pb_tpm) == nrow(clin))
+pseudobulk_diff_counts <- function(pb_counts, clin) {
+  stopifnot(ncol(pb_counts) == nrow(clin))
   grp <- factor(clin$cohort)
   if (length(levels(grp)) != 2) stop("Need exactly two cohorts for differential analysis")
   
-  s1 <- which(grp == levels(grp)[1])
-  s2 <- which(grp == levels(grp)[2])
+  # Round to integers just in case
+  cnt <- round(pb_counts)
+  keep <- rowSums(cnt) > 1
+  cnt <- cnt[keep, , drop = FALSE]
   
-  eps <- 1e-6
-  g_mean <- rowMeans(pb_tpm, na.rm = TRUE)
-  g_mean1 <- rowMeans(pb_tpm[, s1, drop = FALSE], na.rm = TRUE)
-  g_mean2 <- rowMeans(pb_tpm[, s2, drop = FALSE], na.rm = TRUE)
-  log2fc <- log2((g_mean1 + eps) / (g_mean2 + eps))
-  
-  # Wilcoxon p‑values per gene
-  pvals <- apply(pb_tpm, 1, function(v) {
-    x <- v[s1]; y <- v[s2]
-    if (all(is.na(x)) || all(is.na(y))) return(NA_real_)
-    tryCatch(wilcox.test(x, y)$p.value, error = function(e) NA_real_)
-  })
-  padj <- p.adjust(pvals, method = "BH")
-  
-  data.frame(
-    baseMean = g_mean,
-    log2FoldChange = log2fc,
-    pvalue = pvals,
-    padj = padj,
-    row.names = rownames(pb_tpm)
-  )
+  coldata <- data.frame(row.names = colnames(cnt), condition = grp)
+  dds <- DESeq2::DESeqDataSetFromMatrix(countData = cnt, colData = coldata, design = ~ condition)
+  dds <- DESeq2::DESeq(dds)
+  res <- as.data.frame(DESeq2::results(dds, contrast = c("condition", levels(grp)[1], levels(grp)[2])))
+  res$baseMean <- if (!"baseMean" %in% names(res)) rowMeans(cnt) else res$baseMean
+  res <- res[, intersect(c("baseMean","log2FoldChange","pvalue","padj"), names(res))]
+  res
 }
 

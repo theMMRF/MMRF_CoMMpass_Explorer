@@ -1364,67 +1364,66 @@ shinyServer(function(input, output, session) {
   # Update gene list whenever cell type changes
   observe({
     req(input$pseudo_celltype)
-    pb_mat <- .get_pb_matrix(pseudo_bulk, input$pseudo_celltype)
+    pb_norm <- .get_pb_matrix(pseudo_bulk_norm, input$pseudo_celltype)
     updateSelectizeInput(session, "gene_search_pseudo_distr",
-                         choices = unique(rownames(pb_mat)), selected = NULL, server = TRUE)
+                         choices = unique(rownames(pb_norm)), selected = "KRAS", server = TRUE)
   })
   
-  # Prepare pseudobulk data aligned to current filtered cohorts
   preprocessed_pseudobulk_data <- reactive({
     req(input$pseudo_celltype)
-    pb_tpm <- .get_pb_matrix(pseudo_bulk, input$pseudo_celltype)
     
-    # Use the same combined clinical
+    pb_norm   <- .get_pb_matrix(pseudo_bulk_norm,   input$pseudo_celltype)
+    pb_counts <- .get_pb_matrix(pseudo_bulk_counts, input$pseudo_celltype)
+    
     clinical_combined <- filtered_data$combined
-    aligned <- .align_pb_to_clinical(pb_tpm, clinical_combined)
+    
+    aln_norm   <- .align_pb_to_clinical(pb_norm,   clinical_combined)
+    aln_counts <- .align_pb_to_clinical(pb_counts, clinical_combined)
     
     list(
-      pb_tpm = aligned$pb_tpm,                       # genes x Tumor_Sample_Barcode
-      clinical_combined = aligned$clinical_aligned,  # rows aligned to columns of pb_tpm
-      celltype = input$pseudo_celltype,
-      total = ncol(pb_tpm)
+      pb_norm   = aln_norm$pb_tpm,      # genes x TSB (normalized values for plots)
+      pb_counts = aln_counts$pb_tpm,    # genes x TSB (integer counts for DE)
+      clinical  = aln_norm$clinical_aligned,  # aligned clin rows matching columns
+      celltype  = input$pseudo_celltype,
+      total     = ncol(pb_norm)
     )
   })
   
   # Counts summary card
   output$pseudoNum <- renderUI({
     dat <- preprocessed_pseudobulk_data()
-    pb_clin <- dat$clinical_combined
-    
-    num_total <- dat$total
+    pb_clin <- dat$clinical
+    num_total  <- dat$total
     num_cohort1 <- sum(pb_clin$cohort == "Cohort1")
     num_cohort2 <- sum(pb_clin$cohort == "Cohort2")
-    
-    text <- sprintf(
+    HTML(sprintf(
       "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-       <strong>Total Samples:</strong> %d<br>
-       <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-       <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)<br>
-       <strong>Cell type:</strong> %s
-       </div>",
+     <strong>Total Samples:</strong> %d<br>
+     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
+     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)<br>
+     <strong>Cell type:</strong> %s
+     </div>",
       num_total, num_cohort1, ifelse(num_total==0, 0, num_cohort1/num_total*100),
       num_cohort2, ifelse(num_total==0, 0, num_cohort2/num_total*100), dat$celltype
-    )
-    HTML(text)
+    ))
   })
   
   # Distribution (density + histogram)
-  output$pseudo_tpm_distr <- renderPlotly({
+  output$pseudo_norm_distr <- renderPlotly({
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr)
-    
-    p <- tpm_distr_dens(dat$pb_tpm, dat$clinical_combined, input$gene_search_pseudo_distr, "scRNAseq")
+    p <- tpm_distr_dens(dat$pb_norm, dat$clinical, input$gene_search_pseudo_distr, "scRNAseq")
     ggplotly(p, tooltip = "text") %>% layout(hovermode = "x")
   })
   
   # Boxplot + Wilcoxon p‑value
-  output$pseudo_tpm_distr_boxplot <- renderPlot({
+  output$pseudo_norm_distr_boxplot <- renderPlot({
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr)
-    
-    p <- tpm_boxplot(dat$pb_tpm, dat$clinical_combined, input$gene_search_pseudo_distr, "scRNAseq")
+    p <- tpm_boxplot(dat$pb_norm, dat$clinical, input$gene_search_pseudo_distr, "scRNAseq")
     print(p)
   })
+  
   
   # Quantile tables (split by cohort)
   output$pseudo_quantile_table_cohort1 <- renderDT({
@@ -1438,53 +1437,56 @@ shinyServer(function(input, output, session) {
     datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
   })
   
+  output$pseudo_quantile_table_cohort1 <- renderDT({
+    dat <- preprocessed_pseudobulk_data()
+    req(input$gene_search_pseudo_distr)
+    clin1 <- dat$clinical[dat$clinical$cohort == "Cohort1", ]
+    pb1   <- dat$pb_norm[, colnames(dat$pb_norm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
+    tab <- tpm_distr_table(pb1, input$gene_search_pseudo_distr)
+    datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
+  })
+  
   output$pseudo_quantile_table_cohort2 <- renderDT({
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr)
-    
-    clin2 <- dat$clinical_combined[dat$clinical_combined$cohort == "Cohort2", ]
-    pb2 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
-    
+    clin2 <- dat$clinical[dat$clinical$cohort == "Cohort2", ]
+    pb2   <- dat$pb_norm[, colnames(dat$pb_norm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
     tab <- tpm_distr_table(pb2, input$gene_search_pseudo_distr)
     datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
   })
   
   # Survival curves by expression split
-  output$pseudo_tpm_survCompPlot_g1 <- renderPlot({
+  output$pseudo_norm_survCompPlot_g1 <- renderPlot({
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr, input$cohorting_method_pseudo_g1)
-    
     clin1 <- filtered_data$cohort1
-    pb1 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
+    pb1   <- dat$pb_norm[, colnames(dat$pb_norm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
     clin1 <- clin1[clin1$Tumor_Sample_Barcode %in% colnames(pb1), ]
-    
-    gene <- input$gene_search_pseudo_distr
+    gene  <- input$gene_search_pseudo_distr
     if (!gene %in% rownames(pb1)) return(NULL)
-    
     tpm_distr_survival(as.matrix(pb1[gene, , drop = FALSE]), clin1, input$cohorting_method_pseudo_g1)
   })
   
-  output$pseudo_tpm_survCompPlot_g2 <- renderPlot({
+  output$pseudo_norm_survCompPlot_g2 <- renderPlot({
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr, input$cohorting_method_pseudo_g2)
-    
     clin2 <- filtered_data$cohort2
-    pb2 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
+    pb2   <- dat$pb_norm[, colnames(dat$pb_norm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
     clin2 <- clin2[clin2$Tumor_Sample_Barcode %in% colnames(pb2), ]
-    
-    gene <- input$gene_search_pseudo_distr
+    gene  <- input$gene_search_pseudo_distr
     if (!gene %in% rownames(pb2)) return(NULL)
-    
     tpm_distr_survival(as.matrix(pb2[gene, , drop = FALSE]), clin2, input$cohorting_method_pseudo_g2)
   })
   
-  # Differential analysis (Wilcoxon + log2FC)
+  # Differential analysis
   pseudo_diff_results <- reactiveValues(result = NULL)
   
   observeEvent(input$start_pseudo_diff, {
     dat <- preprocessed_pseudobulk_data()
-    withProgress(message = paste0("Running differential analysis (", dat$celltype, ")..."), value = 0.5, {
-      res <- pseudobulk_diff(dat$pb_tpm, dat$clinical_combined)
+    withProgress(message = sprintf("Running DESeq2 (pseudobulk: %s)...", dat$celltype), value = 0.5, {
+      # DE on counts:
+      .check_duplicate_samples(dat$pb_counts, dat$clinical, context = sprintf("pseudobulk (%s) DESeq2", dat$celltype))
+      res <- pseudobulk_diff_counts(dat$pb_counts, dat$clinical)
       pseudo_diff_results$result <- res
     })
   })
@@ -1493,24 +1495,23 @@ shinyServer(function(input, output, session) {
   filtered_pseudo_degs <- reactive({
     req(pseudo_diff_results$result)
     res <- pseudo_diff_results$result
-    thr_p <- input$p_threshold_pseudo
+    thr_p  <- input$p_threshold_pseudo
     thr_fc <- input$fc_threshold_pseudo
-    
-    res$significant <- ifelse(!is.na(res$padj) & res$padj < thr_p & res$log2FoldChange > thr_fc, "Up-regulated",
+    res$significant <- ifelse(!is.na(res$padj) & res$padj < thr_p & res$log2FoldChange >  thr_fc, "Up-regulated",
                               ifelse(!is.na(res$padj) & res$padj < thr_p & res$log2FoldChange < -thr_fc, "Down-regulated", "Not Significant"))
     res
   })
   
   # Volcano
-  output$pseudoVolcano <- renderPlot({
+  output$pseudoVolcano <- plotly::renderPlotly({
     req(filtered_pseudo_degs())
-    print(deseq2_volcano(filtered_pseudo_degs(), input$p_threshold_pseudo, input$fc_threshold_pseudo))
+    deseq2_volcano_plotly(filtered_pseudo_degs(), input$p_threshold_pseudo, input$fc_threshold_pseudo, src = "pb_volcano")
   })
   
   # Table + download
   output$pseudo_DEGs_table <- renderDT({
     req(filtered_pseudo_degs())
-    d <- filtered_pseudo_degs()[, c("baseMean", "log2FoldChange", "padj", "significant")]
+    d <- filtered_pseudo_degs()[, c("baseMean","log2FoldChange","padj","significant")]
     d$baseMean <- round(d$baseMean, 3)
     d$log2FoldChange <- round(d$log2FoldChange, 3)
     datatable(d, options = list(pageLength = 10, autoWidth = TRUE))
@@ -1525,4 +1526,3 @@ shinyServer(function(input, output, session) {
   )
   
 })
-

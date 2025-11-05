@@ -310,7 +310,7 @@ dashboardPage(
                  column(12, htmlOutput("bulkNum"))
                ),
                fluidRow(
-                 box(title = "TPM Distribution", width = 12,
+                 box(title = "Distribution", width = 12,
                      selectizeInput("gene_search_bulk_distr", "Enter Gene", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
                      plotlyOutput("tpm_distr")
                  )
@@ -410,28 +410,28 @@ dashboardPage(
                ),
                
                fluidRow(
-                 box(title = "TPM Distribution", width = 12,
-                     selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk), width = "240px"),
+                 box(title = "Distribution", width = 12,
+                     selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk_norm), width = "240px"),
                      selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = "KRAS",
                                     options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
-                     plotlyOutput("pseudo_tpm_distr")
+                     plotlyOutput("pseudo_norm_distr")
                  )
                ),
                
                fluidRow(
                  box(title = NULL, width = 12,
-                     plotOutput("pseudo_tpm_distr_boxplot")
+                     plotOutput("pseudo_norm_distr_boxplot")
                  )
                ),
                
                fluidRow(
                  box(title = "Cohort 1", width = 6,
                      selectInput("cohorting_method_pseudo_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                     plotOutput("pseudo_tpm_survCompPlot_g1")
+                     plotOutput("pseudo_norm_survCompPlot_g1")
                  ),
                  box(title = "Cohort 2", width = 6,
                      selectInput("cohorting_method_pseudo_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                     plotOutput("pseudo_tpm_survCompPlot_g2")
+                     plotOutput("pseudo_norm_survCompPlot_g2")
                  )
                ),
                
@@ -442,14 +442,14 @@ dashboardPage(
                
                fluidRow(
                  box(title = "Differential analysis (pseudobulk)", width = 12,
-                     p("Non‑count data detected; using Wilcoxon rank‑sum per gene and log2FC between cohorts."),
+                     p("Using DESeq2."),
                      fluidRow(
                        column(6, numericInput("p_threshold_pseudo", "P‑value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
-                       column(6, numericInput("fc_threshold_pseudo", "Log2 Fold Change Threshold", value = 1.0, min = 0, max = 10, step = 0.1))
+                       column(6, numericInput("fc_threshold_pseudo", "Log2 Fold Change Threshold", value = 1.5, min = 0, max = 10, step = 0.1))
                      ),
                      verbatimTextOutput("pseudo_deseq_status"),
                      actionButton("start_pseudo_diff", "Run differential analysis"),
-                     plotOutput("pseudoVolcano")
+                     plotlyOutput("pseudoVolcano", height = "520px")
                  )
                ),
                
