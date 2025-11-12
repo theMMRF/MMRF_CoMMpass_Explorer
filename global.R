@@ -10,9 +10,9 @@ lapply(packages, library, character.only = TRUE)
 # Load data ------
 bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline_cleaned.rds")
-clinical_data <- readRDS("clinical_data_n1411.rds")
+clinical_data <- readRDS("data/clinical_data_n1411.rds")
 maf_data <- readRDS("data/maf_data.rds")
-sc_meta <- readRDS("data/sc_meta_manuscript.rds")
+sc_meta <- readRDS("data/sc_meta_manuscript_baseline.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
 pseudo_bulk_counts <- readRDS("data/pseudobulk_data_manuscript_Counts.rds")
 pseudo_bulk_norm <- readRDS("data/pseudobulk_data_manuscript_LogNormalize.rds")
@@ -21,24 +21,6 @@ clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
-
-clean_categorical <- function(x) {
-  x <- as.character(x)
-  x <- trimws(x)  # remove leading/trailing spaces
-  x[x %in% c("", ".", "NA", "N/A", "Unknown", "UNK")] <- NA
-  x
-}
-
-cols_with_blanks <- sapply(clinical_data, function(col) {
-  any(trimws(as.character(col)) == "")
-})
-
-empty_str_cols <- names(cols_with_blanks[cols_with_blanks])[!is.na(names(cols_with_blanks[cols_with_blanks]))]
-
-
-for (colname in empty_str_cols) {
-  clinical_data[[colname]] <- clean_categorical(clinical_data[[colname]])
-}
 
 # Safe lookup of counts from a table
 .safe_count <- function(tbl, v) {
@@ -770,6 +752,117 @@ get_continuous_features <- function() {
   c("Age", "BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
 }
 
+
+############### Cox-PH ###############
+# Pretty HR table from a fitted coxph
+.cox_tidy_table <- function(fit) {
+  sm <- summary(fit)
+  co <- as.data.frame(sm$coefficients)
+  ci <- as.data.frame(sm$conf.int)
+  # Match rows
+  out <- data.frame(
+    Term = rownames(co),
+    HR = ci$`exp(coef)`,
+    CI_low = ci$`lower .95`,
+    CI_high = ci$`upper .95`,
+    z = co$`z`,
+    p = co$`Pr(>|z|)`,
+    row.names = NULL,
+    check.names = FALSE
+  )
+  out$HR <- round(out$HR, 3)
+  out$CI_low <- round(out$CI_low, 3)
+  out$CI_high <- round(out$CI_high, 3)
+  out$z <- round(out$z, 3)
+  out$p <- signif(out$p, 3)
+  out$`HR (95% CI)` <- paste0(out$HR, " (", out$CI_low, "-", out$CI_high, ")")
+  out[, c("Term", "HR (95% CI)", "z", "p")]
+}
+
+# Maps endpoint to time/event columns
+.cox_endpoint_map <- function(ep) {
+  if (identical(ep, "OS")) {
+    list(time = "OS_censored", event = "OS_event", label = "Overall Survival")
+  } else {
+    list(time = "PFS_censored", event = "PFS_event", label = "Progression-Free Survival")
+  }
+}
+
+# Converts character columns to factor; leaves numeric as numeric
+.coerce_for_cox <- function(df, cols) {
+  for (nm in cols) {
+    if (!nm %in% names(df)) next
+    if (is.character(df[[nm]]) || is.logical(df[[nm]])) df[[nm]] <- factor(df[[nm]])
+    # leave numeric/integer as is
+  }
+  df
+}
+
+# Does a factor level produce 0 events or 0 non-events? (separation)
+.has_zero_cell <- function(x, event) {
+  if (!is.factor(x)) return(FALSE)
+  tab <- table(x, event)
+  any(tab == 0)  # any level has 0 in a cell
+}
+
+# For numeric: zero variance overall or within event/non-event strata
+.bad_numeric <- function(x, event) {
+  if (!is.numeric(x)) return(FALSE)
+  ux <- unique(x[!is.na(x)])
+  if (length(ux) <= 1) return(TRUE)
+  v0 <- suppressWarnings(stats::var(x[event == 1], na.rm = TRUE))
+  v1 <- suppressWarnings(stats::var(x[event == 0], na.rm = TRUE))
+  (is.na(v0) || v0 == 0) || (is.na(v1) || v1 == 0)
+}
+
+# Drop covariates that would cause infinite estimates
+.prune_separating_covars <- function(df, covars, event_col) {
+  bad <- vapply(covars, function(v) {
+    if (!v %in% names(df)) return(TRUE)
+    x <- df[[v]]
+    ev <- df[[event_col]]
+    if (is.factor(x)) .has_zero_cell(x, ev) else .bad_numeric(x, ev)
+  }, logical(1))
+  list(keep = covars[!bad], drop = covars[bad])
+}
+
+.safe_forest <- function(fit) {
+  sm <- summary(fit)
+  co <- as.data.frame(sm$coefficients)
+  ci <- as.data.frame(sm$conf.int)
+  
+  # Build tidy frame (drop non-finite)
+  df <- data.frame(
+    term     = rownames(co),
+    hr       = ci$`exp(coef)`,
+    lo       = ci$`lower .95`,
+    hi       = ci$`upper .95`,
+    stringsAsFactors = FALSE
+  )
+  df <- df[is.finite(df$hr) & is.finite(df$lo) & is.finite(df$hi), , drop = FALSE]
+  if (!nrow(df)) {
+    # nothing plottable
+    return(ggplot2::ggplot() + ggplot2::geom_blank() +
+             ggplot2::labs(title = "No finite HRs to plot"))
+  }
+  
+  # clip extreme CIs to keep axis sane; adjust limits from remaining finite values
+  lo_min <- max(min(df$lo[df$lo > 0 & is.finite(df$lo)], na.rm = TRUE), 1e-3)
+  hi_max <- min(max(df$hi[is.finite(df$hi)], na.rm = TRUE), 1e3)
+  
+  df$term <- factor(df$term, levels = rev(df$term))
+  
+  ggplot2::ggplot(df, ggplot2::aes(x = term, y = hr)) +
+    ggplot2::geom_point() +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = pmax(lo, lo_min), ymax = pmin(hi, hi_max)), width = 0.2) +
+    ggplot2::geom_hline(yintercept = 1, linetype = "dashed") +
+    ggplot2::coord_flip() +
+    ggplot2::scale_y_log10(limits = c(lo_min, hi_max)) +
+    ggplot2::labs(x = NULL, y = "Hazard Ratio (log scale)")
+}
+
+####################################################
+
 .check_duplicate_samples <- function(count_mat, clin, sample_col = "Tumor_Sample_Barcode", context = "bulkRNA-seq") {
   # what DESeq2 will use as rownames
   ids_from_counts <- colnames(count_mat)
@@ -1276,13 +1369,12 @@ celltype_proportion <- function(cohort_info, sc_meta) {
     mutate(proportion = count / sum(count) * 100)
   
   colors <- c(
-    "CD4+" = "#7b3294", 
-    "CD8+" = "#c2a5cf", 
-    "B_Cells" = "#a6dba0",
+    "CD4_T_cells" = "#7b3294", 
+    "CD8_T_cells" = "#c2a5cf", 
+    "B_cells" = "#a6dba0",
     "Monocytes" = "#008837",  
-    "NK" = "#fdae61", 
-    "PlasmaCells" = "#e66101", 
-    "UNK" = "#b2182b"
+    "NK_cells" = "#fdae61", 
+    "PlasmaCells" = "#e66101"
   )
   # Set the order of the cohort factor levels
   cell_proportions$cohort <- factor(cell_proportions$cohort, levels = c("Cohort2", "Cohort1"))

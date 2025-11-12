@@ -1,4 +1,3 @@
-source("global.R")
 # User interface ------
 dashboardPage(
   # skin = "purple",
@@ -225,8 +224,67 @@ dashboardPage(
                      p(HTML("<strong>Significance levels:</strong> *** p<0.001, ** p<0.01, * p<0.05, NS = Not Significant")),
                      DTOutput("significance_table")
                  )
-               )
+               ),
                
+               ###################### COX-PH ######################
+               
+               fluidRow(
+                 box(title = "Model setup", width = 12,
+                     fluidRow(
+                       column(3,
+                              radioButtons(
+                                "cox_data_source", "Data for model",
+                                choices = c("Cohort 1", "Cohort 2", "Both"),
+                                selected = "Both"
+                              ),
+                              selectInput("cox_endpoint", "Endpoint",
+                                          choices = c("PFS", "OS"), selected = "OS"),
+                              checkboxInput("cox_use_cohort", "Include cohort indicator", TRUE),
+                              selectInput("cox_strata", "Stratify by",
+                                          choices = c("None"), selected = "None")
+                       ),
+                       column(5,
+                              selectizeInput(
+                                "cox_covars",
+                                "Covariates (clinical / molecular)",
+                                choices = NULL, multiple = TRUE,
+                                options = list(placeholder = 'Pick variables to adjust for…',
+                                               plugins = list("remove_button")),
+                                width = "100%"
+                              )
+                       ),
+                       column(4,
+                              selectizeInput(
+                                "cox_gene",
+                                "Add bulk TPM gene covariate",
+                                choices = NULL,
+                                multiple = FALSE,
+                                selected = "",
+                                options = list(placeholder = 'None')
+                              ),
+                              
+                              radioButtons("cox_gene_mode", "Gene encoding",
+                                           choices = c("continuous (log2(TPM+1))" = "continuous",
+                                                       "median split (Low/High)" = "median"),
+                                           selected = "continuous")
+                       )
+                     ),
+                     actionButton("fit_cox", "Fit Cox model", icon = icon("play"), class = "btn-primary"),
+                     tags$br(), tags$br(),
+                     verbatimTextOutput("cox_formula")
+                 )
+               ),
+               fluidRow(
+                 box(title = "Cox-PH Results", width = 12,
+                     DTOutput("cox_table"),
+                     downloadButton("download_cox_table", "Download HR table")
+                 )
+               ),
+               fluidRow(
+                 box(title = "Forest plot", width = 12,
+                     plotOutput("cox_forest", height = "600px")
+                 )
+               )
       ),
       
       tabPanel("Mutational Profile", value = "Mutational Profile",
@@ -358,8 +416,8 @@ dashboardPage(
                fluidRow(
                  box(title = "DEGs", width = 12,
                      DTOutput("DEGs_table"),
+                     downloadButton("download_DEGs", "Download Full Table")
                  ),
-                 downloadButton("download_DEGs", "Download Full Table")
                ),
                
                fluidRow(

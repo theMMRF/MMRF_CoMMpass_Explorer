@@ -376,14 +376,10 @@ shinyServer(function(input, output, session) {
       filter_key <- mp$filter_key[i]
       colname    <- mp$column[i]
       
-      # control truly mounted?
       if (!(input_id %in% names(input))) next
-      
-      # skip updating if this picker is currently open in the browser
       open_id <- isolate(input$picker_open_id)
       if (!is.null(open_id) && identical(open_id, input_id)) next
       
-      # Exclude THIS picker’s own categorical filter; keep the rest
       filters_excl <- filters
       filters_excl[[filter_key]] <- NULL
       
@@ -648,8 +644,6 @@ shinyServer(function(input, output, session) {
       }
     }
     
-    
-    
     if (nrow(clinical_filtered) == 0) {
       showNotification("No patients in Cohort 2 match the filters.", type = "error")
       return(clinical_error)
@@ -657,7 +651,6 @@ shinyServer(function(input, output, session) {
     
     return(clinical_filtered)
   })
-  
   
   
   # filtered_data that stores combined clinical data and cohort1, cohort2 data
@@ -690,8 +683,18 @@ shinyServer(function(input, output, session) {
     data_cohort1$cohort <- "Cohort1"
     data_cohort2$cohort <- "Cohort2"
     
-    patient_ids_cohort1 <- data_cohort1$Tumor_Sample_Barcode
-    patient_ids_cohort2 <- data_cohort2$Tumor_Sample_Barcode
+    n1 <- names(data_cohort1)
+    n2 <- names(data_cohort2)
+    common <- intersect(n1, n2)
+    
+    if (length(common) == 0L) {
+      showNotification("No common columns between cohorts after filtering.", type = "error")
+      return()
+    }
+    
+    # keep only common columns, same order
+    data_cohort1 <- as.data.frame(data_cohort1[, common, drop = FALSE])
+    data_cohort2 <- as.data.frame(data_cohort2[, common, drop = FALSE])
     
     combined_clinical <- rbind(data_cohort1, data_cohort2)
     
@@ -699,6 +702,9 @@ shinyServer(function(input, output, session) {
     filtered_data$cohort1 <- data_cohort1
     filtered_data$cohort2 <- data_cohort2
     filtered_data$combined <- combined_clinical
+    
+    patient_ids_cohort1 <- data_cohort1$Tumor_Sample_Barcode
+    patient_ids_cohort2 <- data_cohort2$Tumor_Sample_Barcode
     filtered_data$cohort1_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_cohort1)
     filtered_data$cohort2_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_cohort2)
   })
@@ -726,24 +732,29 @@ shinyServer(function(input, output, session) {
   preprocessed_sc_meta <- reactive({
     clinical_combined <- filtered_data$combined[, c("Tumor_Sample_Barcode", "cohort")]
     
-    # Get patients in clinical and create public_id column for clinical
-    patients_in_clinical <- sapply(strsplit(as.character(clinical_combined$Tumor_Sample_Barcode), "_"),
-                                   function(x) paste(x[1], x[2], sep="_"))
+    # Derive public_id (MMRF_XXXX) from Tumor_Sample_Barcode like before
+    patients_in_clinical <- sapply(
+      strsplit(as.character(clinical_combined$Tumor_Sample_Barcode), "_"),
+      function(x) paste(x[1], x[2], sep = "_")
+    )
     clinical_combined$public_id <- patients_in_clinical
     
-    # Intersect
-    inter_samples <- intersect(clinical_combined$public_id, sc_meta$public_id)
-    num_sample <- length(intersect(clinical_data$public_id, sc_meta$immune_analysis_id))
-    clinical_combined <- clinical_combined[clinical_combined$public_id %in% inter_samples,]
+    # Intersect by public_id
+    inter_public <- intersect(clinical_combined$public_id, sc_meta$public_id)
     
-    cohort_info <- clinical_combined %>% 
-      distinct(public_id, cohort) # Select only unique combinations of public_id and cohort from the clinical_combined
+    # How many clinical patients have scRNA-seq data
+    num_sample <- length(unique(inter_public))
+    
+    clinical_combined <- clinical_combined[clinical_combined$public_id %in% inter_public, ]
+    
+    cohort_info <- clinical_combined %>%
+      dplyr::distinct(public_id, cohort)
     
     list(
-      num_sample = num_sample,
-      inter_samples = inter_samples,
+      num_sample    = num_sample,
+      inter_samples = inter_public,
       clinical_combined = clinical_combined,
-      cohort_info = cohort_info
+      cohort_info   = cohort_info
     )
   })
   
@@ -983,7 +994,183 @@ shinyServer(function(input, output, session) {
     )
   ))
   
+  # --------------- Cox-PH ----------------
+  # Build design frame for model based on inputs
+  .build_cox_data <- function() {
+    src <- input$cox_data_source
+    df <- switch(src,
+                 "Cohort 1" = filtered_data$cohort1,
+                 "Cohort 2" = filtered_data$cohort2,
+                 "Both"     = filtered_data$combined,
+                 filtered_data$combined)
+    
+    df <- as.data.frame(df)  # avoid data.table class surprises
+    
+    ep <- .cox_endpoint_map(input$cox_endpoint)
+    req(ep$time %in% names(df), ep$event %in% names(df))
+    
+    # TPM gene covariate
+    gene_term <- NULL
+    if (!is.null(input$cox_gene) && nzchar(input$cox_gene)) {
+      g <- input$cox_gene
+      inter <- intersect(df$Tumor_Sample_Barcode, colnames(bulkseq_tpm))
+      df <- df[df$Tumor_Sample_Barcode %in% inter, , drop = FALSE]
+      gvec <- as.numeric(bulkseq_tpm[g, df$Tumor_Sample_Barcode])
+      
+      if (identical(input$cox_gene_mode, "continuous")) {
+        df$gene_expr <- log2(gvec + 1)
+        gene_term <- "gene_expr"
+      } else {
+        med <- stats::median(gvec, na.rm = TRUE)
+        df$gene_group <- factor(ifelse(gvec > med, "High", "Low"), levels = c("Low", "High"))
+        gene_term <- "gene_group"
+      }
+    }
+    
+    # Covariates (keep only those that actually exist)
+    covars <- input$cox_covars
+    if (length(covars)) covars <- intersect(covars, names(df))
+    allow_cohort <- identical(src, "Both")
+    if (allow_cohort && isTRUE(input$cox_use_cohort)) covars <- unique(c("cohort", covars))
+    if (!is.null(gene_term)) covars <- c(covars, gene_term)
+    covars <- unique(covars)
+    
+    # rows complete for all needed columns
+    needed <- unique(c(ep$time, ep$event, covars))
+    needed <- needed[needed %in% names(df)]
+    df <- df[stats::complete.cases(df[, needed, drop = FALSE]), , drop = FALSE]
+    
+    # coerce char/logical to factor
+    df <- .coerce_for_cox(df, needed)
+    
+    list(df = df, time = ep$time, event = ep$event,
+         covars = covars, gene_term = gene_term,
+         ep_label = ep$label)
+  }
   
+  
+  observe({
+    covar_choices <- sort(get_clinical_feature_choices(clinical_data))
+    updateSelectizeInput(session, "cox_covars", choices = covar_choices, server = TRUE)
+    updateSelectizeInput(
+      session, "cox_gene",
+      choices = c("None" = "", sort(rownames(bulkseq_tpm))),
+      server = TRUE
+    )
+    allow_cohort <- identical(input$cox_data_source, "Both")
+    strata_choices <- c("None", covar_choices)
+    if (allow_cohort) strata_choices <- c(strata_choices, "cohort")
+    updateSelectInput(session, "cox_strata", choices = unique(strata_choices))
+  })
+  
+  
+  # When user isn't fitting on both cohorts, disable the cohort indicator
+  observe({
+    allow_cohort <- identical(input$cox_data_source, "Both")
+    if (!allow_cohort && isTRUE(input$cox_use_cohort)) {
+      updateCheckboxInput(session, "cox_use_cohort", value = FALSE)
+    }
+    shinyjs::toggleState("cox_use_cohort", condition = allow_cohort)
+  })
+  
+  cox_state <- reactiveValues(fit = NULL, data = NULL, formula = NULL, ep_label = NULL)
+  
+  observeEvent(input$fit_cox, {
+    dat <- .build_cox_data()
+    
+    # never pass "None" into strata()
+    strata_var <- if (identical(input$cox_strata, "None")) NULL else input$cox_strata
+    
+    zero_var <- vapply(dat$df[, dat$covars, drop = FALSE], function(x) {
+      ux <- unique(x); ux <- ux[!is.na(ux)]
+      length(ux) <= 1
+    }, logical(1))
+    if (any(zero_var)) {
+      dropped <- names(zero_var)[zero_var]
+      dat$covars <- setdiff(dat$covars, dropped)
+      showNotification(paste("Dropped constant covariates:", paste(dropped, collapse = ", ")),
+                       type = "warning")
+    }
+    
+    # --- prune covariates that cause separation/degeneracy
+    pr <- .prune_separating_covars(dat$df, dat$covars, dat$event)
+    if (length(pr$drop)) {
+      showNotification(
+        paste("Removed covariates with empty cells / zero variance:",
+              paste(pr$drop, collapse = ", ")),
+        type = "warning"
+      )
+    }
+    dat$covars <- pr$keep
+    validate(need(length(dat$covars) > 0 || !is.null(strata_var),
+                  "No usable covariates left after pruning."))
+    
+    # re-compute required columns and keep complete rows only
+    needed <- unique(c(dat$time, dat$event, dat$covars, if (!is.null(strata_var)) strata_var))
+    dat$df  <- dat$df[stats::complete.cases(dat$df[, needed, drop = FALSE]), , drop = FALSE]
+    
+    dat$df <- droplevels(dat$df)
+    
+    validate(need(nrow(dat$df) >= 10, "Not enough rows after filtering to fit a Cox model."))
+    validate(need(length(dat$covars) > 0 || !is.null(strata_var),
+                  "No usable covariates left (all were constant/missing in this subset)."))
+    
+    has_event <- any(dat$df[[dat$event]] == 1, na.rm = TRUE)
+    validate(need(has_event, "No events in the selected endpoint for this subset."))
+    
+    # build RHS
+    rhs <- if (length(dat$covars)) paste(dat$covars, collapse = " + ") else "1"
+    if (!is.null(strata_var)) rhs <- paste(rhs, paste0("+ strata(", strata_var, ")"))
+    fml <- as.formula(paste0("survival::Surv(", dat$time, ", ", dat$event, ") ~ ", rhs))
+    
+    message("Fitting formula: ", deparse(fml))
+    message("Rows: ", nrow(dat$df), " | Covars: ",
+            if (length(dat$covars)) paste(dat$covars, collapse = ", ") else "(intercept only)")
+    
+    fit <- tryCatch(
+      survival::coxph(fml, data = dat$df, ties = "efron", model = TRUE, x = TRUE),
+      error = function(e) { showNotification(e$message, type = "error"); NULL }
+    )
+    validate(need(!is.null(fit), "Cox fit failed."))
+    
+    cox_state$fit      <- fit
+    cox_state$data     <- dat$df
+    cox_state$formula  <- fml
+    cox_state$ep_label <- dat$ep_label
+  })
+  
+  
+  
+  output$cox_formula <- renderText({
+    req(cox_state$formula)
+    paste("Model:", deparse(cox_state$formula))
+  })
+  
+  output$cox_table <- renderDT({
+    req(cox_state$fit)
+    datatable(.cox_tidy_table(cox_state$fit),
+              options = list(pageLength = 10, scrollX = TRUE))
+  })
+  
+  output$download_cox_table <- downloadHandler(
+    filename = function() paste0("cox_results_", Sys.Date(), ".csv"),
+    content = function(file) {
+      req(cox_state$fit)
+      write.csv(.cox_tidy_table(cox_state$fit), file, row.names = FALSE)
+    }
+  )
+  
+  output$cox_forest <- renderPlot({
+    req(cox_state$fit, cox_state$data)
+    ok <- all(is.finite(coef(cox_state$fit)))
+    if (ok) {
+      # try the pretty default first
+      p <- try(survminer::ggforest(cox_state$fit, data = cox_state$data), silent = TRUE)
+      if (!inherits(p, "try-error")) return(p)
+    }
+    # fallback if infinities or ggforest choked
+    .safe_forest(cox_state$fit)
+  })
   
   # WGS -------------------------
   # Draw MAF summary plot
