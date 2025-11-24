@@ -4,7 +4,6 @@ dashboardPage(
   # Header
   dashboardHeader(
     title = "CoMMpass Explorer",
-    # Add a tour button in the header (right side)
     tags$li(class = "dropdown",
             actionButton("start_tour", "Interactive Tour", icon = icon("question-circle"))
     )
@@ -54,7 +53,13 @@ dashboardPage(
                                 conditionalPanel(
                                   condition = "input.enable_survival_filter_cohort1 == true",
                                   radioButtons("surv_threshold_type_cohort1", "Type", choices = c("value", "percentile"), selected = "value"),
-                                  selectInput("surv_variable_cohort1", "Variable", choices = c("PFS_censored", "OS_censored"), selected = "OS_censored"),
+                                  selectInput("surv_variable_cohort1", "Variable",
+                                              choices = c(
+                                                "PFS (days)"               = "PFS_censored",
+                                                "OS (days)"                = "OS_censored",
+                                                "Time to Second Line (days)"  = "ttct2line"
+                                              ),
+                                              selected = "PFS_censored"),
                                   
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort1 == 'value'",
@@ -111,7 +116,13 @@ dashboardPage(
                                 conditionalPanel(
                                   condition = "input.enable_survival_filter_cohort2 == true",
                                   radioButtons("surv_threshold_type_cohort2", "Type", choices = c("value", "percentile"), selected = "value"),
-                                  selectInput("surv_variable_cohort2", "Variable", choices = c("PFS_censored", "OS_censored"), selected = "OS_censored"),
+                                  selectInput("surv_variable_cohort2", "Variable",
+                                              choices = c(
+                                                "PFS (days)"               = "PFS_censored",
+                                                "OS (days)"                = "OS_censored",
+                                                "Time to Second Line (days)"  = "ttct2line"
+                                              ),
+                                              selected = "PFS_censored"),
                                   
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort2 == 'value'",
@@ -148,7 +159,7 @@ dashboardPage(
     ),
     tabsetPanel(
       id = "main_tabs",
-      tabPanel("Custom Cohorts", value = "Custom Cohorts",
+      tabPanel("Upload Cohorts", value = "Custom Cohorts",
                fluidRow(
                  box(title = "How it works", width = 12, id = "how_it_works",
                      HTML("<ul style='margin-bottom:0'>
@@ -200,12 +211,16 @@ dashboardPage(
                ),
                
                fluidRow(
-                 box(title = "Cohort1 vs Cohort2 Survival Curve (PFS)", width = 6,
+                 box(title = "Survival Curve (PFS)", width = 4,
                      plotOutput("survCompPlot_pfs_censored")
                  ),
                  
-                 box(title = "Cohort1 vs Cohort2 Survival Curve (OS)", width = 6,
+                 box(title = "Survival Curve (OS)", width = 4,
                      plotOutput("survCompPlot_os_censored")
+                 ),
+                 
+                 box(title = "Survival Curve (Time to Second Line)", width = 4,
+                     plotOutput("survCompPlot_tt2Line_censored")
                  )
                ),
                
@@ -227,7 +242,6 @@ dashboardPage(
                ),
                
                ###################### COX-PH ######################
-               
                fluidRow(
                  box(title = "Model setup", width = 12,
                      fluidRow(
@@ -237,8 +251,17 @@ dashboardPage(
                                 choices = c("Cohort 1", "Cohort 2", "Both"),
                                 selected = "Both"
                               ),
-                              selectInput("cox_endpoint", "Endpoint",
-                                          choices = c("PFS", "OS"), selected = "OS"),
+                              
+                              selectInput(
+                                "cox_endpoint", "Endpoint",
+                                choices = c(
+                                  "PFS"                    = "PFS",
+                                  "OS"                     = "OS",
+                                  "Time to Second Line"    = "TT2L"
+                                ),
+                                selected = "OS"
+                              ),
+                              
                               checkboxInput("cox_use_cohort", "Include cohort indicator", TRUE),
                               selectInput("cox_strata", "Stratify by",
                                           choices = c("None"), selected = "None")

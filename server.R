@@ -334,12 +334,12 @@ shinyServer(function(input, output, session) {
   .make_picker_map <- function(cohort_id) {
     # clinical
     clinical_map <- data.frame(
-      inputId    = paste0(c("sex_filter_", "race_filter_", "stage_filter_", "risk_filter_", "cyto_risk_filter_",
+      inputId    = paste0(c("sex_filter_", "race_filter_", "stage_filter_", "risk_filter_", "cyto_risk_filter_", "cgs_risk_filter_",
                             "rna_subtype_filter_", "cna_subtype_filter_", "triplet_filter_", "asct_filter_"),
                           cohort_id),
-      filter_key = c("sex","race","stage","risk","cyto_risk",
+      filter_key = c("sex","race","stage","risk","cyto_risk","cgs_risk",
                      "rna_subtype","cna_subtype","triplet","asct"),
-      column     = c("Sex","Race","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk",
+      column     = c("Sex","Race","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk","CGS_risk",
                      "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First","ASCT_First"),
       stringsAsFactors = FALSE
     )
@@ -459,7 +459,7 @@ shinyServer(function(input, output, session) {
     # Touch all cohort1 filter inputs to create reactivity
     dummy <- list(
       input$sex_filter_cohort1, input$race_filter_cohort1, input$stage_filter_cohort1,
-      input$risk_filter_cohort1, input$cyto_risk_filter_cohort1,
+      input$risk_filter_cohort1, input$cyto_risk_filter_cohort1, input$cgs_risk_filter_cohort1,
       input$rna_subtype_filter_cohort1, input$cna_subtype_filter_cohort1,
       input$triplet_filter_cohort1, input$asct_filter_cohort1,
       input$chr_1q21_gain_filter_cohort1, input$chr_1q21_amp_filter_cohort1,
@@ -477,7 +477,7 @@ shinyServer(function(input, output, session) {
     # Same for cohort2
     dummy <- list(
       input$sex_filter_cohort2, input$race_filter_cohort2, input$stage_filter_cohort2,
-      input$risk_filter_cohort2, input$cyto_risk_filter_cohort2,
+      input$risk_filter_cohort2, input$cyto_risk_filter_cohort2, input$cgs_risk_filter_cohort2,
       input$rna_subtype_filter_cohort2, input$cna_subtype_filter_cohort2,
       input$triplet_filter_cohort2, input$asct_filter_cohort2,
       input$chr_1q21_gain_filter_cohort2, input$chr_1q21_amp_filter_cohort2,
@@ -859,103 +859,39 @@ shinyServer(function(input, output, session) {
     generate_summary_plot("cohort2", filtered_data)
   })
   
-  # Draw survival curve comparison plot (PFS_censored)
+  # Draw survival curve comparison plot (PFS)
   output$survCompPlot_pfs_censored <- renderPlot({
     req(filtered_data$combined)
-    combined_clinical <- filtered_data$combined
-    
-    combined_surv <- Surv(combined_clinical$PFS_censored, combined_clinical$PFS_event)
-    
-    fit_combined <- do.call(survfit, list(combined_surv ~ cohort, data = combined_clinical))
-    
-    ggsurvplot(fit_combined, data = combined_clinical,
-               # Core aesthetics
-               palette = c("#E41A1C", "#4DBBD5"),  #red for Cohort1, teal for Cohort2
-               linetype = c("solid", "solid"),
-               size = 1,           # Line thickness
-               
-               # Statistical elements
-               conf.int = TRUE,
-               pval = TRUE,
-               pval.coord = c(500, 0.1),
-               
-               # Labels and titles
-               title = "",  
-               xlab = "Progression-Free Survival (Days)",
-               ylab = "Survival Probability",
-               legend.title = "",
-               legend.labs = c("Cohort1", "Cohort2"),
-               
-               # Risk table configuration
-               risk.table = TRUE,
-               risk.table.height = 0.25,
-               risk.table.title = "Number at risk",
-               risk.table.fontsize = 3.5,
-               tables.theme = theme_cleantable(),
-               
-               # Formatting and theme
-               ggtheme = theme_bw() + theme(
-                 panel.grid.minor = element_blank(),
-                 axis.title = element_text(face = "bold", size = 12),
-                 axis.text = element_text(size = 10),
-                 legend.position = "top",
-                 legend.text = element_text(size = 10),
-                 plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
-               ),
-               
-               # Customize the axes
-               break.time.by = 500,  # X-axis tick marks every 500 days
-               surv.scale = "percent" # Y-axis in percentage
+    plot_cohort_survival(
+      data     = filtered_data$combined,
+      time_col = "PFS_censored",
+      event_col = "PFS_event",
+      xlab      = "Progression-Free Survival (Days)",
+      break_by  = 500
     )
   })
   
   # Draw survival curve comparison plot (OS)
   output$survCompPlot_os_censored <- renderPlot({
     req(filtered_data$combined)
-    combined_clinical <- filtered_data$combined
-    
-    combined_surv <- Surv(combined_clinical$OS_censored, combined_clinical$OS_event)
-    
-    fit_combined <- do.call(survfit, list(combined_surv ~ cohort, data = combined_clinical))
-    
-    ggsurvplot(fit_combined, data = combined_clinical,
-               # Core aesthetics
-               palette = c("#E41A1C", "#4DBBD5"),  # red for Cohort1, teal for Cohort2
-               linetype = c("solid", "solid"),
-               size = 1,           # Line thickness
-               
-               # Statistical elements
-               conf.int = TRUE,    # Show 95% confidence intervals
-               pval = TRUE,        # Show p-value
-               pval.coord = c(500, 0.1), # Position of p-value
-               
-               # Labels and titles
-               title = "",  
-               xlab = "Overall Survival (Days)",
-               ylab = "Survival Probability",
-               legend.title = "",
-               legend.labs = c("Cohort1", "Cohort2"),
-               
-               # Risk table configuration
-               risk.table = TRUE,
-               risk.table.height = 0.25,
-               risk.table.title = "Number at risk",
-               risk.table.fontsize = 3.5,
-               tables.theme = theme_cleantable(),
-               
-               # Formatting and theme
-               ggtheme = theme_bw() + theme(
-                 panel.grid.minor = element_blank(),
-                 axis.title = element_text(face = "bold", size = 12),
-                 axis.text = element_text(size = 10),
-                 legend.position = "top",
-                 legend.text = element_text(size = 10),
-                 plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
-               ),
-               
-               # Customize the axes
-               break.time.by = 500,  # X-axis tick marks every 500 days
-               surv.scale = "percent" # Y-axis in percentage
+    plot_cohort_survival(
+      data      = filtered_data$combined,
+      time_col  = "OS_censored",
+      event_col = "OS_event",
+      xlab      = "Overall Survival (Days)",
+      break_by  = 500
+    )
+  })
+  
+  # Time to second line survival curve
+  output$survCompPlot_tt2Line_censored <- renderPlot({
+    req(filtered_data$combined)
+    plot_cohort_survival(
+      data      = filtered_data$combined,
+      time_col  = "ttct2line",
+      event_col = "censt2line",
+      xlab      = "Time to Second Line (Days)",
+      break_by  = 500   # adjust if needed based on your range
     )
   })
   

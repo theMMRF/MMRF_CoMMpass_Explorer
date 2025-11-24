@@ -10,7 +10,7 @@ lapply(packages, library, character.only = TRUE)
 # Load data ------
 bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
 bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline_cleaned.rds")
-clinical_data <- readRDS("data/clinical_data_n1411.rds")
+clinical_data <- readRDS("data/clinical_data_n1141.rds")
 maf_data <- readRDS("data/maf_data.rds")
 sc_meta <- readRDS("data/sc_meta_manuscript_baseline.rds")
 ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
@@ -21,6 +21,11 @@ clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
+clinical_data$ttct2line <- as.numeric(as.character(clinical_data$ttct2line))
+clinical_data$censt2line <- as.numeric(as.character(clinical_data$censt2line))
+
+clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
+                                 levels = c("Standard", "High"))
 
 # Safe lookup of counts from a table
 .safe_count <- function(tbl, v) {
@@ -213,6 +218,7 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             create_picker_input(paste0("stage_filter_", cohort_id), "ISS Stage", sort(unique(clinical_data$ISS))),
             create_picker_input(paste0("risk_filter_", cohort_id), "IMWG Risk Classification", sort(unique(clinical_data$IMWG_Risk_Class))),
             create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$Skerget_Cytogenetic_High_Risk))),
+            create_picker_input(paste0("cgs_risk_filter_", cohort_id), "CGS Risk (Consensus Genomic Staging)", sort(unique(clinical_data$CGS_risk))),
             
             # Subtypes
             create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_RNA_Subtype_Name))),
@@ -258,6 +264,7 @@ get_cohort_filters <- function(input, cohort_id, category) {
       stage = input[[paste0("stage_filter_", cohort_id)]],
       risk = input[[paste0("risk_filter_", cohort_id)]],
       cyto_risk = input[[paste0("cyto_risk_filter_", cohort_id)]],
+      cgs_risk  = input[[paste0("cgs_risk_filter_", cohort_id)]],
       
       rna_subtype = input[[paste0("rna_subtype_filter_", cohort_id)]],
       cna_subtype = input[[paste0("cna_subtype_filter_", cohort_id)]],
@@ -306,6 +313,7 @@ filter_cohort_data <- function(data, filters) {
     apply_filter("ISS", filters$stage) %>%
     apply_filter("IMWG_Risk_Class", filters$risk) %>%
     apply_filter("Skerget_Cytogenetic_High_Risk", filters$cyto_risk) %>%
+    apply_filter("CGS_risk", filters$cgs_risk) %>%
     
     # Subtypes
     apply_filter("Skerget_RNA_Subtype_Name", filters$rna_subtype) %>%
@@ -349,7 +357,8 @@ get_cohort_selected <- function(filtered_data, cohort_selected) {
 # Summary of clinical data
 generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
-  features <- c("Race", "Sex", "Age_range", "ISS", "IMWG_Risk_Class", "ASCT_First", "Triplet_First", "Hyperdiploidy", "chromothripsis")
+  features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class",
+                "CGS_risk", "ASCT_First", "Triplet_First", "Hyperdiploidy", "chromothripsis")
   
   unique_values_counts_list <- lapply(features, function(feature) {
     data.frame(Value = names(table(selected_data[[feature]])),
@@ -736,7 +745,7 @@ create_significance_table <- function(data, clinical_features, continuous_featur
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",
                        "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", 
-                       "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event")
+                       "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event", "ttct2line", "censt2line")
   
   if (!is.null(exclude_cols)) {
     exclude_cols <- c(default_exclude, exclude_cols)
@@ -750,6 +759,62 @@ get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
 # Define continuous features
 get_continuous_features <- function() {
   c("Age", "BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
+}
+
+
+# Generic cohort survival curve helper -------------------------------------
+plot_cohort_survival <- function(data,
+                                 time_col,   # string: column name for time
+                                 event_col,  # string: column name for event (0/1)
+                                 xlab,
+                                 break_by = 500,
+                                 legend_labs = c("Cohort1", "Cohort2")) {
+  stopifnot(all(c("cohort", time_col, event_col) %in% names(data)))
+  surv_obj <- survival::Surv(time = data[[time_col]],
+                             event = data[[event_col]])
+  
+  fit <- do.call(survival::survfit,
+                 list(surv_obj ~ cohort, data = data))
+  
+  xmax <- max(data[[time_col]], na.rm = TRUE)
+  pval_x <- if (is.finite(xmax)) xmax * 0.6 else break_by
+  
+  survminer::ggsurvplot(
+    fit, data = data,
+    # Core aesthetics
+    palette = c("#E41A1C", "#4DBBD5"),  # red = Cohort1, teal = Cohort2
+    linetype = c("solid", "solid"),
+    size = 1,
+    
+    conf.int = TRUE,
+    pval = TRUE,
+    pval.coord = c(pval_x, 0.1),
+    
+    title = "",
+    xlab = xlab,
+    ylab = "Survival Probability",
+    legend.title = "",
+    legend.labs = legend_labs,
+    
+    # Risk table
+    risk.table = TRUE,
+    risk.table.height = 0.25,
+    risk.table.title = "Number at risk",
+    risk.table.fontsize = 3.5,
+    tables.theme = survminer::theme_cleantable(),
+    
+    ggtheme = ggplot2::theme_bw() + ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.title = ggplot2::element_text(face = "bold", size = 12),
+      axis.text = ggplot2::element_text(size = 10),
+      legend.position = "top",
+      legend.text = ggplot2::element_text(size = 10),
+      plot.title = ggplot2::element_text(face = "bold", size = 14, hjust = 0.5)
+    ),
+    
+    break.time.by = break_by,
+    surv.scale = "percent"
+  )
 }
 
 
@@ -782,9 +847,23 @@ get_continuous_features <- function() {
 # Maps endpoint to time/event columns
 .cox_endpoint_map <- function(ep) {
   if (identical(ep, "OS")) {
-    list(time = "OS_censored", event = "OS_event", label = "Overall Survival")
-  } else {
-    list(time = "PFS_censored", event = "PFS_event", label = "Progression-Free Survival")
+    list(
+      time  = "OS_censored",
+      event = "OS_event",
+      label = "Overall Survival"
+    )
+  } else if (identical(ep, "TT2L")) {
+    list(
+      time  = "ttct2line",
+      event = "censt2line",
+      label = "Time to Second Line"
+    )
+  } else {  # default to PFS
+    list(
+      time  = "PFS_censored",
+      event = "PFS_event",
+      label = "Progression-Free Survival"
+    )
   }
 }
 
