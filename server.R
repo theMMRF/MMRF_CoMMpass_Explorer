@@ -334,13 +334,13 @@ shinyServer(function(input, output, session) {
   .make_picker_map <- function(cohort_id) {
     # clinical
     clinical_map <- data.frame(
-      inputId    = paste0(c("sex_filter_", "race_filter_", "stage_filter_", "risk_filter_", "cyto_risk_filter_", "cgs_risk_filter_",
-                            "rna_subtype_filter_", "cna_subtype_filter_", "triplet_filter_", "asct_filter_"),
+      inputId    = paste0(c("sex_filter_", "race_filter_", "genetic_ancestry_filter_", "stage_filter_", "risk_filter_", "cyto_risk_filter_", "cgs_risk_filter_",
+                            "rna_subtype_filter_", "cna_subtype_filter_", "triplet_filter_", "asct_filter_", "regimen_filter_"),
                           cohort_id),
-      filter_key = c("sex","race","stage","risk","cyto_risk","cgs_risk",
-                     "rna_subtype","cna_subtype","triplet","asct"),
-      column     = c("Sex","Race","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk","CGS_risk",
-                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First","ASCT_First"),
+      filter_key = c("sex","race","genetic_ancestry","stage","risk","cyto_risk","cgs_risk",
+                     "rna_subtype","cna_subtype","triplet","asct","regimen"),
+      column     = c("Sex","Race","genetic_ancestry","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk","CGS_risk",
+                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First","ASCT_First", "regimen"),
       stringsAsFactors = FALSE
     )
     
@@ -458,10 +458,11 @@ shinyServer(function(input, output, session) {
   observe({
     # Touch all cohort1 filter inputs to create reactivity
     dummy <- list(
-      input$sex_filter_cohort1, input$race_filter_cohort1, input$stage_filter_cohort1,
+      input$sex_filter_cohort1, input$race_filter_cohort1, input$genetic_ancestry_filter_cohort1, input$stage_filter_cohort1,
       input$risk_filter_cohort1, input$cyto_risk_filter_cohort1, input$cgs_risk_filter_cohort1,
       input$rna_subtype_filter_cohort1, input$cna_subtype_filter_cohort1,
       input$triplet_filter_cohort1, input$asct_filter_cohort1,
+      input$regimen_filter_cohort1,
       input$chr_1q21_gain_filter_cohort1, input$chr_1q21_amp_filter_cohort1,
       input$chr_13q14_del_filter_cohort1, input$chr_13q34_del_filter_cohort1,
       input$chr_17p13_del_filter_cohort1, input$diploidy_filter_cohort1,
@@ -476,10 +477,11 @@ shinyServer(function(input, output, session) {
   observe({
     # Same for cohort2
     dummy <- list(
-      input$sex_filter_cohort2, input$race_filter_cohort2, input$stage_filter_cohort2,
+      input$sex_filter_cohort2, input$race_filter_cohort2, input$genetic_ancestry_filter_cohort2, input$stage_filter_cohort2,
       input$risk_filter_cohort2, input$cyto_risk_filter_cohort2, input$cgs_risk_filter_cohort2,
       input$rna_subtype_filter_cohort2, input$cna_subtype_filter_cohort2,
       input$triplet_filter_cohort2, input$asct_filter_cohort2,
+      input$regimen_filter_cohort2,
       input$chr_1q21_gain_filter_cohort2, input$chr_1q21_amp_filter_cohort2,
       input$chr_13q14_del_filter_cohort2, input$chr_13q34_del_filter_cohort2,
       input$chr_17p13_del_filter_cohort2, input$diploidy_filter_cohort2,
@@ -743,7 +745,7 @@ shinyServer(function(input, output, session) {
     inter_public <- intersect(clinical_combined$public_id, sc_meta$public_id)
     
     # How many clinical patients have scRNA-seq data
-    num_sample <- length(unique(inter_public))
+    num_sample <- length(unique(sc_meta$d_visit_specimen_id))
     
     clinical_combined <- clinical_combined[clinical_combined$public_id %in% inter_public, ]
     
@@ -789,8 +791,10 @@ shinyServer(function(input, output, session) {
   # MAF
   output$mafNum <- renderUI({
     num_total <- uniqueN(maf_data@data$Tumor_Sample_Barcode)
+    
     num_cohort1 <- nrow(filtered_data$cohort1_maf@clinical.data)
     num_cohort2 <- nrow(filtered_data$cohort2_maf@clinical.data)
+    
     text <- sprintf(
       "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
      <strong>Total Samples:</strong> %d<br>
@@ -860,11 +864,11 @@ shinyServer(function(input, output, session) {
   })
   
   # Draw survival curve comparison plot (PFS)
-  output$survCompPlot_pfs_censored <- renderPlot({
+  output$survCompPlot_pfs <- renderPlot({
     req(filtered_data$combined)
     plot_cohort_survival(
       data     = filtered_data$combined,
-      time_col = "PFS_censored",
+      time_col = "PFS",
       event_col = "PFS_event",
       xlab      = "Progression-Free Survival (Days)",
       break_by  = 500
@@ -872,11 +876,11 @@ shinyServer(function(input, output, session) {
   })
   
   # Draw survival curve comparison plot (OS)
-  output$survCompPlot_os_censored <- renderPlot({
+  output$survCompPlot_os <- renderPlot({
     req(filtered_data$combined)
     plot_cohort_survival(
       data      = filtered_data$combined,
-      time_col  = "OS_censored",
+      time_col  = "OS",
       event_col = "OS_event",
       xlab      = "Overall Survival (Days)",
       break_by  = 500

@@ -171,3 +171,15 @@ hr {
   border-color: #5e1034;
   color: white;
 }
+
+/* ---- Fix sidebar dropdown arrow overlaps text ---- */
+/* reserve space on the right for the arrow */
+.skin-blue .main-sidebar .sidebar-menu li > a {
+  padding-right: 30px !important;
+}
+/* keep the arrow pinned to the right */
+.skin-blue .main-sidebar .sidebar-menu li > a > .pull-right-container {
+  right: 10px !important;
+}
+
+

@@ -17,9 +17,9 @@ ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
 pseudo_bulk_counts <- readRDS("data/pseudobulk_data_manuscript_Counts.rds")
 pseudo_bulk_norm <- readRDS("data/pseudobulk_data_manuscript_LogNormalize.rds")
 
-clinical_data$PFS_censored <- as.numeric(as.character(clinical_data$PFS_censored))
+clinical_data$PFS <- as.numeric(as.character(clinical_data$PFS))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
-clinical_data$OS_censored <- as.numeric(as.character(clinical_data$OS_censored))
+clinical_data$OS <- as.numeric(as.character(clinical_data$OS))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 clinical_data$ttct2line <- as.numeric(as.character(clinical_data$ttct2line))
 clinical_data$censt2line <- as.numeric(as.character(clinical_data$censt2line))
@@ -211,7 +211,8 @@ create_cohort_filters_ui <- function(cohort_id, category) {
           return(list(
             # Demographics
             create_picker_input(paste0("sex_filter_", cohort_id), "Sex", sort(unique(clinical_data$Sex))),
-            create_picker_input(paste0("race_filter_", cohort_id), "Race", sort(unique(clinical_data$Race))),
+            create_picker_input(paste0("race_filter_", cohort_id), "Race (self-reported)", sort(unique(clinical_data$Race))),
+            create_picker_input(paste0("genetic_ancestry_filter_", cohort_id), "Genetic Ancestry", sort(unique(clinical_data$genetic_ancestry))),
             uiOutput(paste0("age_filter_", cohort_id)),
             
             # Clinical classification
@@ -226,7 +227,10 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             
             # Treatment
             create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First))),
-            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First)))
+            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First))),
+            
+            # Regimen 
+            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$regimen)))
           ))
         } else if (category == "molecular") {
           return(list(
@@ -259,6 +263,7 @@ get_cohort_filters <- function(input, cohort_id, category) {
     return(list(
       sex = input[[paste0("sex_filter_", cohort_id)]],
       race = input[[paste0("race_filter_", cohort_id)]],
+      genetic_ancestry = input[[paste0("genetic_ancestry_filter_", cohort_id)]],
       age = input[[paste0("age_", cohort_id)]],
       
       stage = input[[paste0("stage_filter_", cohort_id)]],
@@ -270,7 +275,9 @@ get_cohort_filters <- function(input, cohort_id, category) {
       cna_subtype = input[[paste0("cna_subtype_filter_", cohort_id)]],
       
       triplet = input[[paste0("triplet_filter_", cohort_id)]],
-      asct = input[[paste0("asct_filter_", cohort_id)]]
+      asct = input[[paste0("asct_filter_", cohort_id)]],
+      
+      regimen = input[[paste0("regimen_filter_", cohort_id)]]
     ))
   } else if (category == "molecular") {
     return(list(
@@ -301,6 +308,7 @@ filter_cohort_data <- function(data, filters) {
     # Demographic filters
     apply_filter("Sex", filters$sex) %>%
     apply_filter("Race", filters$race) %>%
+    apply_filter("genetic_ancestry", filters$genetic_ancestry) %>%
     {
       if (!is.null(filters$age) && length(filters$age) == 2) {
         filter(., Age >= filters$age[1], Age <= filters$age[2])
@@ -322,6 +330,7 @@ filter_cohort_data <- function(data, filters) {
     # Treatment
     apply_filter("Triplet_First", filters$triplet) %>%
     apply_filter("ASCT_First", filters$asct) %>%
+    apply_filter("regimen", filters$regimen) %>%
     
     # Chromosomal abnormalities
     apply_filter("chr_1q21_gain", filters$q21_gain) %>%
@@ -744,7 +753,7 @@ create_significance_table <- function(data, clinical_features, continuous_featur
 # Get clinical feature choices for selectInput
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",
-                       "PFS", "PFS_event", "PFS_censored", "OS", "OS_censored", 
+                       "PFS_event", "PFS", "OS", 
                        "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event", "ttct2line", "censt2line")
   
   if (!is.null(exclude_cols)) {
@@ -848,7 +857,7 @@ plot_cohort_survival <- function(data,
 .cox_endpoint_map <- function(ep) {
   if (identical(ep, "OS")) {
     list(
-      time  = "OS_censored",
+      time  = "OS",
       event = "OS_event",
       label = "Overall Survival"
     )
@@ -860,7 +869,7 @@ plot_cohort_survival <- function(data,
     )
   } else {  # default to PFS
     list(
-      time  = "PFS_censored",
+      time  = "PFS",
       event = "PFS_event",
       label = "Progression-Free Survival"
     )
@@ -1195,38 +1204,36 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
 # Function to draw boxplot of tpm values and use Wilcoxon test for p values
 tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data_type) {
   
-  value_type <- "TPM"
-  if (data_type=="scRNAseq") {
-    value_type <- "CPM"
-  } else {
-    if (data_type=="bulkRNAseq") {
-      value_type <- "TPM"
-    }
-  }
+  value_label <- if (data_type == "scRNAseq") "Log-normalized Expression" else "TPM"
+  value_col   <- value_label
   
-  # Merge the datasets
+  y_mapping <- if (make.names(value_col) != value_col) paste0("`", value_col, "`") else value_col
+  
   merged_data <- count_data_tpm %>%
     t() %>%
     as.data.frame() %>%
     rownames_to_column(var = "Tumor_Sample_Barcode") %>%
     inner_join(clinical_combined, by = "Tumor_Sample_Barcode")
   
-  # Ensure 'cohort' is a factor
   merged_data$cohort <- as.factor(merged_data$cohort)
   
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
-    rename(!!value_type := all_of(gene_interested))
-  ycol <- if (data_type == "scRNAseq") "CPM" else "TPM"
-  max_y <- max(gene_data[[ycol]], na.rm = TRUE)
-  # Create the boxplot
-  p <- ggboxplot(gene_data, x = "cohort", y = value_type,
-                 color = "cohort", add = "jitter") +
-    stat_compare_means(method = "wilcox.test", label = "p.format", label.y = max_y * 1.1) +
-    labs(x = "Cohort",
-         y = paste(value_type, " of", gene_interested))
+    dplyr::rename(!!value_col := all_of(gene_interested))
   
-  return(p)
+  max_y <- suppressWarnings(max(gene_data[[value_col]], na.rm = TRUE))
+  
+  p <- ggpubr::ggboxplot(gene_data, x = "cohort", y = y_mapping,
+                         color = "cohort", add = "jitter") +
+    labs(x = "Cohort",
+         y = paste0(value_label, " of ", gene_interested))
+  
+  if (is.finite(max_y)) {
+    p <- p + ggpubr::stat_compare_means(method = "wilcox.test",
+                                        label = "p.format",
+                                        label.y = max_y * 1.1)
+  }
+  p
 }
 
 # Function to create distribution table for gene of interest
@@ -1287,7 +1294,7 @@ tpm_distr_survival <- function(gene_tpm, selected_clinical, cohorting_method) {
   # Some samples does not have PFS and PFS_event, so the num of samples used in survival curve and selected_clinical is not consistent
   # Num of NAs: PFS, PFS_event; 308, 12. 
   # Survival curves
-  surv_object <- Surv(time = selected_clinical$PFS_censored, event = selected_clinical$PFS_event)
+  surv_object <- Surv(time = selected_clinical$PFS, event = selected_clinical$PFS_event)
   fit <- do.call(survfit, list(surv_object ~ cohort, data = selected_clinical))
   ggsurvplot(fit, data = selected_clinical, pval = TRUE,
              risk.table = TRUE, risk.table.col = "strata",
@@ -1412,7 +1419,7 @@ celltype_boxplot <- function(cohort_info, sc_meta) {
   comparison_results <- merged_data %>%
     group_by(celltypes) %>%
     summarise(
-      p_value = t.test(proportion ~ cohort)$p.value
+      p_value = wilcox.test(proportion ~ cohort)$p.value
     ) %>%
     mutate(p_adj = p.adjust(p_value, method = "BH"))
   

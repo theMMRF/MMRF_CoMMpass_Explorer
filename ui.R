@@ -55,11 +55,11 @@ dashboardPage(
                                   radioButtons("surv_threshold_type_cohort1", "Type", choices = c("value", "percentile"), selected = "value"),
                                   selectInput("surv_variable_cohort1", "Variable",
                                               choices = c(
-                                                "PFS (days)"               = "PFS_censored",
-                                                "OS (days)"                = "OS_censored",
+                                                "PFS (days)"               = "PFS",
+                                                "OS (days)"                = "OS",
                                                 "Time to Second Line (days)"  = "ttct2line"
                                               ),
-                                              selected = "PFS_censored"),
+                                              selected = "PFS"),
                                   
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort1 == 'value'",
@@ -118,11 +118,11 @@ dashboardPage(
                                   radioButtons("surv_threshold_type_cohort2", "Type", choices = c("value", "percentile"), selected = "value"),
                                   selectInput("surv_variable_cohort2", "Variable",
                                               choices = c(
-                                                "PFS (days)"               = "PFS_censored",
-                                                "OS (days)"                = "OS_censored",
+                                                "PFS (days)"               = "PFS",
+                                                "OS (days)"                = "OS",
                                                 "Time to Second Line (days)"  = "ttct2line"
                                               ),
-                                              selected = "PFS_censored"),
+                                              selected = "PFS"),
                                   
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort2 == 'value'",
@@ -212,15 +212,15 @@ dashboardPage(
                
                fluidRow(
                  box(title = "Survival Curve (PFS)", width = 4,
-                     plotOutput("survCompPlot_pfs_censored")
-                 ),
-                 
-                 box(title = "Survival Curve (OS)", width = 4,
-                     plotOutput("survCompPlot_os_censored")
+                     plotOutput("survCompPlot_pfs")
                  ),
                  
                  box(title = "Survival Curve (Time to Second Line)", width = 4,
                      plotOutput("survCompPlot_tt2Line_censored")
+                 ),
+                 
+                 box(title = "Survival Curve (OS)", width = 4,
+                     plotOutput("survCompPlot_os")
                  )
                ),
                
@@ -456,89 +456,96 @@ dashboardPage(
       ),
       
       tabPanel("Immune Microenvironment", value = "Immune Microenvironment",
-               fluidRow(
-                 column(12, htmlOutput("scNum"))
-               ),
-               fluidRow(
-                 box(title = "Cell Type Abundance", width = 12,
-                     plotOutput("sc_celltype_boxplot")
-                 )
-               ),
-               
-               fluidRow(
-                 box(title = "Cell Type Proportion", width = 12,
-                     plotOutput("sc_celltype_proportion")
-                 )
-               ),
-               
-               fluidRow(
-                 box(title = "Cell Cycle Distribution", width = 12,
-                     selectizeInput(
-                       "celltypes_interested", 
-                       "Enter Cell Types", 
-                       choices = c("All", unique(sc_meta$celltypes)), 
-                       selected = "All",
-                       multiple = TRUE, 
-                       options = list(create = TRUE, placeholder = 'Search for cell types')
-                     ),
-                     plotOutput("sc_cellcycle_hist")
-                 )
-               )
-      ),
-      tabPanel("Pseudo‑Bulk", value = "Pseudo-Bulk",
-               fluidRow(
-                 column(12, htmlOutput("pseudoNum"))
-               ),
-               
-               fluidRow(
-                 box(title = "Distribution", width = 12,
-                     selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk_norm), width = "240px"),
-                     selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = "KRAS",
-                                    options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
-                     plotlyOutput("pseudo_norm_distr")
-                 )
-               ),
-               
-               fluidRow(
-                 box(title = NULL, width = 12,
-                     plotOutput("pseudo_norm_distr_boxplot")
-                 )
-               ),
-               
-               fluidRow(
-                 box(title = "Cohort 1", width = 6,
-                     selectInput("cohorting_method_pseudo_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                     plotOutput("pseudo_norm_survCompPlot_g1")
+               tabsetPanel(
+                 id = "immune_tabs",
+                 
+                 # ---- scRNAseq TAB ----
+                 tabPanel("scRNAseq", value = "scRNAseq",
+                          fluidRow(
+                            column(12, htmlOutput("scNum"))
+                          ),
+                          fluidRow(
+                            box(title = "Cell Type Abundance", width = 12,
+                                plotOutput("sc_celltype_boxplot")
+                            )
+                          ),
+                          fluidRow(
+                            box(title = "Cell Type Proportion", width = 12,
+                                plotOutput("sc_celltype_proportion")
+                            )
+                          ),
+                          fluidRow(
+                            box(title = "Cell Cycle Distribution", width = 12,
+                                selectizeInput(
+                                  "celltypes_interested", 
+                                  "Enter Cell Types", 
+                                  choices = c("All", unique(sc_meta$celltypes)), 
+                                  selected = "All",
+                                  multiple = TRUE, 
+                                  options = list(create = TRUE, placeholder = 'Search for cell types')
+                                ),
+                                plotOutput("sc_cellcycle_hist")
+                            )
+                          )
                  ),
-                 box(title = "Cohort 2", width = 6,
-                     selectInput("cohorting_method_pseudo_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                     plotOutput("pseudo_norm_survCompPlot_g2")
+                 
+                 # ---- PSEUDO-BULK TAB ----
+                 tabPanel("Pseudo-Bulk", value = "Pseudo-Bulk",
+                          fluidRow(
+                            column(12, htmlOutput("pseudoNum"))
+                          ),
+                          
+                          fluidRow(
+                            box(title = "Distribution", width = 12,
+                                selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk_norm), width = "240px"),
+                                selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = "KRAS",
+                                               options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
+                                plotlyOutput("pseudo_norm_distr")
+                            )
+                          ),
+                          
+                          fluidRow(
+                            box(title = NULL, width = 12,
+                                plotOutput("pseudo_norm_distr_boxplot")
+                            )
+                          ),
+                          
+                          fluidRow(
+                            box(title = "Cohort 1", width = 6,
+                                selectInput("cohorting_method_pseudo_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
+                                plotOutput("pseudo_norm_survCompPlot_g1")
+                            ),
+                            box(title = "Cohort 2", width = 6,
+                                selectInput("cohorting_method_pseudo_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
+                                plotOutput("pseudo_norm_survCompPlot_g2")
+                            )
+                          ),
+                          
+                          fluidRow(
+                            box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort1")),
+                            box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort2"))
+                          ),
+                          
+                          fluidRow(
+                            box(title = "Differential analysis (pseudobulk)", width = 12,
+                                p("Using DESeq2."),
+                                fluidRow(
+                                  column(6, numericInput("p_threshold_pseudo", "P-value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
+                                  column(6, numericInput("fc_threshold_pseudo", "Log2 Fold Change Threshold", value = 1.5, min = 0, max = 10, step = 0.1))
+                                ),
+                                verbatimTextOutput("pseudo_deseq_status"),
+                                actionButton("start_pseudo_diff", "Run differential analysis"),
+                                plotlyOutput("pseudoVolcano", height = "520px")
+                            )
+                          ),
+                          
+                          fluidRow(
+                            box(title = "DEGs", width = 12, DTOutput("pseudo_DEGs_table")),
+                            downloadButton("download_pseudo_DEGs", "Download Full Table")
+                          )
                  )
-               ),
-               
-               fluidRow(
-                 box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort1")),
-                 box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort2"))
-               ),
-               
-               fluidRow(
-                 box(title = "Differential analysis (pseudobulk)", width = 12,
-                     p("Using DESeq2."),
-                     fluidRow(
-                       column(6, numericInput("p_threshold_pseudo", "P‑value Threshold", value = 0.05, min = 0, max = 1, step = 0.01)),
-                       column(6, numericInput("fc_threshold_pseudo", "Log2 Fold Change Threshold", value = 1.5, min = 0, max = 10, step = 0.1))
-                     ),
-                     verbatimTextOutput("pseudo_deseq_status"),
-                     actionButton("start_pseudo_diff", "Run differential analysis"),
-                     plotlyOutput("pseudoVolcano", height = "520px")
-                 )
-               ),
-               
-               fluidRow(
-                 box(title = "DEGs", width = 12, DTOutput("pseudo_DEGs_table")),
-                 downloadButton("download_pseudo_DEGs", "Download Full Table")
                )
-      ),
+      )
     ),
     tags$div(
       style = "text-align: center; padding: 30px 10px 20px 10px; border-top: 1px solid #ccc; background-color: #f9f9f9;",
