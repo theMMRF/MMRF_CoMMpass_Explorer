@@ -182,4 +182,17 @@ hr {
   right: 10px !important;
 }
 
+.plot-export-controls {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.plot-export-controls .form-group {
+  margin-bottom: 6px;
+}
+
+.plot-export-controls .btn {
+  width: 100%;
+}
 

@@ -8,14 +8,14 @@ dashboardPage(
             actionButton("start_tour", "Interactive Tour", icon = icon("question-circle"))
     )
   ),
-  
+
   # Sidebar
   dashboardSidebar(
     useShinyjs(),
     div(id = "filters_sidebar",
         sidebarMenu(
           id = "sidebarMenu",
-          
+
           # Filters
           menuItem("Cohort 1 Filters", icon = icon("filter"),
                    div(id = "cohort1_filters",
@@ -28,7 +28,7 @@ dashboardPage(
                                 actionButton("remove_mut_row_cohort1", "Remove Last Rule"),
                                 uiOutput("mutation_rules_cohort1")
                        ),
-                       
+
                        menuItem("Gene Expression", icon = icon("chart-line"),
                                 selectizeInput("gene_expr_search_cohort1", "Gene", choices = NULL),
                                 radioButtons("expr_threshold_type_cohort1", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
@@ -47,7 +47,7 @@ dashboardPage(
                                   )
                                 )
                        ),
-                       
+
                        menuItem("Survival Filter", icon = icon("hourglass-half"),
                                 checkboxInput("enable_survival_filter_cohort1", "Enable", FALSE),
                                 conditionalPanel(
@@ -60,7 +60,8 @@ dashboardPage(
                                                 "Time to Second Line (days)"  = "ttct2line"
                                               ),
                                               selected = "PFS"),
-                                  
+                                  checkboxInput("require_surv_event_cohort1", "Require event = 1", FALSE),
+
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort1 == 'value'",
                                     fluidRow(
@@ -80,7 +81,7 @@ dashboardPage(
                    ),
                    actionButton("clear_cohort1", "Clear All Cohort 1 Filters", icon = icon("times")) # Clear button for Cohort 1
           ),
-          
+
           menuItem("Cohort 2 Filters", icon = icon("filter"),
                    div(id = "cohort2_filters",
                        menuItem("Clinical Features", icon = icon("heartbeat"),
@@ -92,7 +93,7 @@ dashboardPage(
                                 actionButton("remove_mut_row_cohort2", "Remove Last Rule"),
                                 uiOutput("mutation_rules_cohort2")
                        ),
-                       
+
                        menuItem("Gene Expression", icon = icon("chart-line"),
                                 selectizeInput("gene_expr_search_cohort2", "Gene", choices = NULL),
                                 radioButtons("expr_threshold_type_cohort2", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
@@ -123,7 +124,8 @@ dashboardPage(
                                                 "Time to Second Line (days)"  = "ttct2line"
                                               ),
                                               selected = "PFS"),
-                                  
+                                  checkboxInput("require_surv_event_cohort2", "Require event = 1", FALSE),
+
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort2 == 'value'",
                                     fluidRow(
@@ -148,9 +150,9 @@ dashboardPage(
           )
         )
     )
-    
+
   ),
-  
+
   # Dashboard
   dashboardBody(
     rintrojs::introjsUI(),
@@ -203,34 +205,42 @@ dashboardPage(
                  column(6, div(id = "counts_card", htmlOutput("clinicalNum"))),
                  column(6, align = "right", downloadButton("download_clinical", "Download Filtered Clinical Data"))
                ),
-               
+
                fluidRow(
-                 box(title = "Cohort 1", width = 6, id = "summary_g1", plotOutput("summaryPlot_g1")),
-                 box(title = "Cohort 2", width = 6, id = "summary_g2", plotOutput("summaryPlot_g2"))
-                 
+                 box(title = "Cohort 1", width = 6, id = "summary_g1",
+                     plotOutput("summaryPlot_g1"),
+                     plot_export_controls_ui("summaryPlot_g1")),
+                 box(title = "Cohort 2", width = 6, id = "summary_g2",
+                     plotOutput("summaryPlot_g2"),
+                     plot_export_controls_ui("summaryPlot_g2"))
+
                ),
-               
+
                fluidRow(
                  box(title = "Survival Curve (PFS)", width = 4,
-                     plotOutput("survCompPlot_pfs")
+                     plotOutput("survCompPlot_pfs"),
+                     plot_export_controls_ui("survCompPlot_pfs")
                  ),
-                 
+
                  box(title = "Survival Curve (Time to Second Line)", width = 4,
-                     plotOutput("survCompPlot_tt2Line_censored")
+                     plotOutput("survCompPlot_tt2Line_censored"),
+                     plot_export_controls_ui("survCompPlot_tt2Line_censored")
                  ),
-                 
+
                  box(title = "Survival Curve (OS)", width = 4,
-                     plotOutput("survCompPlot_os")
+                     plotOutput("survCompPlot_os"),
+                     plot_export_controls_ui("survCompPlot_os")
                  )
                ),
-               
+
                fluidRow(
                  box(title = "Distribution by Cohort", width = 12,
-                     selectInput("clin_feature", 
-                                 "Enter a clinical feature", 
-                                 choices = get_clinical_feature_choices(clinical_data), 
+                     selectInput("clin_feature",
+                                 "Enter a clinical feature",
+                                 choices = get_clinical_feature_choices(clinical_data),
                                  width = "200px"),
-                     plotlyOutput("clin_distribution")
+                     plotlyOutput("clin_distribution"),
+                     plot_export_controls_ui("clin_distribution")
                  )
                ),
                fluidRow(
@@ -240,7 +250,7 @@ dashboardPage(
                      DTOutput("significance_table")
                  )
                ),
-               
+
                ###################### COX-PH ######################
                fluidRow(
                  box(title = "Model setup", width = 12,
@@ -251,7 +261,7 @@ dashboardPage(
                                 choices = c("Cohort 1", "Cohort 2", "Both"),
                                 selected = "Both"
                               ),
-                              
+
                               selectInput(
                                 "cox_endpoint", "Endpoint",
                                 choices = c(
@@ -261,7 +271,7 @@ dashboardPage(
                                 ),
                                 selected = "OS"
                               ),
-                              
+
                               checkboxInput("cox_use_cohort", "Include cohort indicator", TRUE),
                               selectInput("cox_strata", "Stratify by",
                                           choices = c("None"), selected = "None")
@@ -285,7 +295,7 @@ dashboardPage(
                                 selected = "",
                                 options = list(placeholder = 'None')
                               ),
-                              
+
                               radioButtons("cox_gene_mode", "Gene encoding",
                                            choices = c("continuous (log2(TPM+1))" = "continuous",
                                                        "median split (Low/High)" = "median"),
@@ -305,87 +315,99 @@ dashboardPage(
                ),
                fluidRow(
                  box(title = "Forest plot", width = 12,
-                     plotOutput("cox_forest", height = "600px")
+                     plotOutput("cox_forest", height = "600px"),
+                     plot_export_controls_ui("cox_forest")
                  )
                )
       ),
-      
+
       tabPanel("Mutational Profile", value = "Mutational Profile",
                fluidRow(
                  column(12, htmlOutput("mafNum"))
                ),
-               
+
                # MAF summary
                fluidRow(
                  box(title = "Cohort 1", width = 6,
-                     plotOutput("mafSummary_g1")
+                     plotOutput("mafSummary_g1"),
+                     plot_export_controls_ui("mafSummary_g1")
                  ),
                  box(title = "Cohort 2", width = 6,
-                     plotOutput("mafSummary_g2")
+                     plotOutput("mafSummary_g2"),
+                     plot_export_controls_ui("mafSummary_g2")
                  )
                ),
-               
+
                # Oncoplot
                fluidRow(
                  box(title = "", width = 6,
-                     plotOutput("oncoplot_g1")
+                     plotOutput("oncoplot_g1"),
+                     plot_export_controls_ui("oncoplot_g1")
                  ),
                  box(title = "", width = 6,
-                     plotOutput("oncoplot_g2")
+                     plotOutput("oncoplot_g2"),
+                     plot_export_controls_ui("oncoplot_g2")
                  )
                ),
-               
+
                # Lollipop plot
                fluidRow(
                  box(title = "", width = 6,
                      selectizeInput("gene_search_lollipop_g1", "Enter Gene for Lollipop Plot", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'),  width = "200px"),
-                     plotOutput("lollipopPlot_g1")
+                     plotOutput("lollipopPlot_g1"),
+                     plot_export_controls_ui("lollipopPlot_g1")
                  ),
                  box(title = "", width = 6,
                      selectizeInput("gene_search_lollipop_g2", "Enter Gene for Lollipop Plot", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'),  width = "200px"),
-                     plotOutput("lollipopPlot_g2")
+                     plotOutput("lollipopPlot_g2"),
+                     plot_export_controls_ui("lollipopPlot_g2")
                  )
                ),
-               
+
                # Interaction
                fluidRow(
                  box(title = "", width = 6,
                      selectizeInput("gene_search_inter_g1", "Enter 5 or more Genes for Interaction Plot", choices = NULL,
                                     multiple = TRUE, options = list(create = TRUE, placeholder = 'Search for genes')),
-                     plotOutput("interactionPlot_g1")
+                     plotOutput("interactionPlot_g1"),
+                     plot_export_controls_ui("interactionPlot_g1")
                  ),
                  box(title = "", width = 6,
                      selectizeInput("gene_search_inter_g2", "Enter 5 or more Genes for Interaction Plot", choices = NULL,
                                     multiple = TRUE, options = list(create = TRUE, placeholder = 'Search for genes')),
-                     plotOutput("interactionPlot_g2")
+                     plotOutput("interactionPlot_g2"),
+                     plot_export_controls_ui("interactionPlot_g2")
                  )
                ),
-               
+
                # CoOncoplot and Barplot
                fluidRow(
                  box(title = "", width = 6,
                      selectizeInput("gene_search_maf", "Enter Genes for MAF Comparison", choices = NULL,
                                     multiple = TRUE, options = list(create = TRUE, placeholder = 'Search for genes')),
-                     plotOutput("mafCompOncoPlot")
+                     plotOutput("mafCompOncoPlot"),
+                     plot_export_controls_ui("mafCompOncoPlot")
                  ),
                  box(title = "", width = 6,
-                     plotOutput("mafCompBarPlot")
+                     plotOutput("mafCompBarPlot"),
+                     plot_export_controls_ui("mafCompBarPlot")
                  )
                ),
-               
+
                fluidRow(
                  box(title = "", width = 12,
                      dataTableOutput("mafCompTable")
                  )
                ),
-               
+
                fluidRow(
                  box(title = "", width = 6,
-                     plotOutput("mafCompForestPlot")
+                     plotOutput("mafCompForestPlot"),
+                     plot_export_controls_ui("mafCompForestPlot")
                  )
                ),
       ),
-      
+
       tabPanel("Tumor Profile", value = "Tumor Profile",
                fluidRow(
                  column(12, htmlOutput("bulkNum"))
@@ -393,38 +415,42 @@ dashboardPage(
                fluidRow(
                  box(title = "Distribution", width = 12,
                      selectizeInput("gene_search_bulk_distr", "Enter Gene", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
-                     plotlyOutput("tpm_distr")
+                     plotlyOutput("tpm_distr"),
+                     plot_export_controls_ui("tpm_distr")
                  )
                ),
-               
+
                fluidRow(
                  box(title = "", width = 12,
-                     plotOutput("tpm_distr_boxplot")
+                     plotOutput("tpm_distr_boxplot"),
+                     plot_export_controls_ui("tpm_distr_boxplot")
                  )
                ),
-               
+
                fluidRow(
                  box(title = "Cohort 1", width = 6,
                      # p("This plot visualizes the survival probability of patient samples of the selected cohort based on the expression levels of a gene selected in TPM Distribution box."),
                      selectInput("cohorting_method_tpm_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                     plotOutput("tpm_survCompPlot_g1")
+                     plotOutput("tpm_survCompPlot_g1"),
+                     plot_export_controls_ui("tpm_survCompPlot_g1")
                  ),
                  box(title = "Cohort 2", width = 6,
                      selectInput("cohorting_method_tpm_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                     plotOutput("tpm_survCompPlot_g2")
+                     plotOutput("tpm_survCompPlot_g2"),
+                     plot_export_controls_ui("tpm_survCompPlot_g2")
                  )
                ),
-               
+
                fluidRow(
                  box(title = "", width = 6,
                      DTOutput("quantile_table_cohort1"),
                  ),
-                 
+
                  box(title = "", width = 6,
                      DTOutput("quantile_table_cohort2"),
                  )
                ),
-               
+
                box(title = "DESeq2", width = 12,
                    p("The DESeq2 analysis will perform differential expression ..."),
                    fluidRow(
@@ -433,32 +459,34 @@ dashboardPage(
                    ),
                    verbatimTextOutput("deseq_status"),
                    actionButton("start_deseq2", "Start DESeq2 Analysis"),
-                   plotlyOutput("bulkVolcano", height = "520px")
+                   plotlyOutput("bulkVolcano", height = "520px"),
+                   plot_export_controls_ui("bulkVolcano")
                ),
-               
+
                fluidRow(
                  box(title = "DEGs", width = 12,
                      DTOutput("DEGs_table"),
                      downloadButton("download_DEGs", "Download Full Table")
                  ),
                ),
-               
+
                fluidRow(
                  box(title = "ssGSEA", width = 12,
                      selectizeInput("selected_gene_sets", "Select Gene Sets to Display:",
                                     choices = NULL, multiple = TRUE),
-                     plotOutput("ssgsea_violin")
+                     plotOutput("ssgsea_violin"),
+                     plot_export_controls_ui("ssgsea_violin")
                  ),
                  box(title = "Gene set table", width = 12,
                      DTOutput("ssgsea_table")
                  )
                )
       ),
-      
+
       tabPanel("Immune Microenvironment", value = "Immune Microenvironment",
                tabsetPanel(
                  id = "immune_tabs",
-                 
+
                  # ---- scRNAseq TAB ----
                  tabPanel("scRNAseq", value = "scRNAseq",
                           fluidRow(
@@ -466,66 +494,73 @@ dashboardPage(
                           ),
                           fluidRow(
                             box(title = "Cell Type Abundance", width = 12,
-                                plotOutput("sc_celltype_boxplot")
+                                plotOutput("sc_celltype_boxplot"),
+                                plot_export_controls_ui("sc_celltype_boxplot")
                             )
                           ),
                           fluidRow(
                             box(title = "Cell Type Proportion", width = 12,
-                                plotOutput("sc_celltype_proportion")
+                                plotOutput("sc_celltype_proportion"),
+                                plot_export_controls_ui("sc_celltype_proportion")
                             )
                           ),
                           fluidRow(
                             box(title = "Cell Cycle Distribution", width = 12,
                                 selectizeInput(
-                                  "celltypes_interested", 
-                                  "Enter Cell Types", 
-                                  choices = c("All", unique(sc_meta$celltypes)), 
+                                  "celltypes_interested",
+                                  "Enter Cell Types",
+                                  choices = c("All", unique(sc_meta$celltypes)),
                                   selected = "All",
-                                  multiple = TRUE, 
+                                  multiple = TRUE,
                                   options = list(create = TRUE, placeholder = 'Search for cell types')
                                 ),
-                                plotOutput("sc_cellcycle_hist")
+                                plotOutput("sc_cellcycle_hist"),
+                                plot_export_controls_ui("sc_cellcycle_hist")
                             )
                           )
                  ),
-                 
+
                  # ---- PSEUDO-BULK TAB ----
                  tabPanel("Pseudo-Bulk", value = "Pseudo-Bulk",
                           fluidRow(
                             column(12, htmlOutput("pseudoNum"))
                           ),
-                          
+
                           fluidRow(
                             box(title = "Distribution", width = 12,
                                 selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk_norm), width = "240px"),
                                 selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = "KRAS",
                                                options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
-                                plotlyOutput("pseudo_norm_distr")
+                                plotlyOutput("pseudo_norm_distr"),
+                                plot_export_controls_ui("pseudo_norm_distr")
                             )
                           ),
-                          
+
                           fluidRow(
                             box(title = NULL, width = 12,
-                                plotOutput("pseudo_norm_distr_boxplot")
+                                plotOutput("pseudo_norm_distr_boxplot"),
+                                plot_export_controls_ui("pseudo_norm_distr_boxplot")
                             )
                           ),
-                          
+
                           fluidRow(
                             box(title = "Cohort 1", width = 6,
                                 selectInput("cohorting_method_pseudo_g1", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                                plotOutput("pseudo_norm_survCompPlot_g1")
+                                plotOutput("pseudo_norm_survCompPlot_g1"),
+                                plot_export_controls_ui("pseudo_norm_survCompPlot_g1")
                             ),
                             box(title = "Cohort 2", width = 6,
                                 selectInput("cohorting_method_pseudo_g2", "Cohorting Method", choices = c("quartiles", "median"), width = "150px"),
-                                plotOutput("pseudo_norm_survCompPlot_g2")
+                                plotOutput("pseudo_norm_survCompPlot_g2"),
+                                plot_export_controls_ui("pseudo_norm_survCompPlot_g2")
                             )
                           ),
-                          
+
                           fluidRow(
                             box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort1")),
                             box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort2"))
                           ),
-                          
+
                           fluidRow(
                             box(title = "Differential analysis (pseudobulk)", width = 12,
                                 p("Using DESeq2."),
@@ -535,10 +570,11 @@ dashboardPage(
                                 ),
                                 verbatimTextOutput("pseudo_deseq_status"),
                                 actionButton("start_pseudo_diff", "Run differential analysis"),
-                                plotlyOutput("pseudoVolcano", height = "520px")
+                                plotlyOutput("pseudoVolcano", height = "520px"),
+                                plot_export_controls_ui("pseudoVolcano")
                             )
                           ),
-                          
+
                           fluidRow(
                             box(title = "DEGs", width = 12, DTOutput("pseudo_DEGs_table")),
                             downloadButton("download_pseudo_DEGs", "Download Full Table")
@@ -549,19 +585,19 @@ dashboardPage(
     ),
     tags$div(
       style = "text-align: center; padding: 30px 10px 20px 10px; border-top: 1px solid #ccc; background-color: #f9f9f9;",
-      
+
       tags$img(src = "MMRF_sign.png", height = "40px", style = "margin-bottom: 10px;"),
-      
+
       tags$p(
-        strong("Reference: "), 
-        "Zhang W, Acharya C.R. (Chuck), ", 
+        strong("Reference: "),
+        "Zhang W, Acharya C.R. (Chuck), ",
         em("Multiple Myeloma Research Foundation (MMRF)"),
         strong(", "),
-        " (2025). doi: ", 
+        " (2025). doi: ",
         tags$a("[Link]", href = "", target = "_blank"),
         style = "font-size: 90%; color: #771544;"
       ),
-      
+
       tags$p(
         HTML("&copy; 2025 Multiple Myeloma Research Foundation"),
         style = "font-size: 85%; color: #555;"

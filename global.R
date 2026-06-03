@@ -67,10 +67,10 @@ clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
   if (length(public_ids) == 0) return(list(tsb = character(), matched_public = character(), unmatched = character()))
   public_ids <- unique(public_ids)
   baseify <- function(x) sub("(_\\d+)?$", "", x)
-  
+
   exact_match <- clinical$Tumor_Sample_Barcode[match(public_ids, clinical$public_id)]
   matched_exact <- !is.na(exact_match)
-  
+
   # Fallback: match by base id (MMRF_1234)
   need_fallback <- which(!matched_exact)
   tsb_fb <- character(length(public_ids)); tsb_fb[] <- NA_character_
@@ -80,10 +80,10 @@ clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
     idx <- match(pid_base, clin_base)
     tsb_fb[need_fallback] <- clinical$Tumor_Sample_Barcode[idx]
   }
-  
+
   tsb_all <- ifelse(matched_exact, exact_match, tsb_fb)
   matched <- !is.na(tsb_all)
-  
+
   list(
     tsb = unique(tsb_all[matched]),
     matched_public = unique(public_ids[matched]),
@@ -98,27 +98,27 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
     # No rules, don't filter, return all IDs
     return(unique(clinical_data$Tumor_Sample_Barcode))
   }
-  
+
   rows <- row_count
   all_samples <- unique(clinical_data$Tumor_Sample_Barcode)
   maf_table <- maf_data@data
-  
+
   get_ids_for_rule <- function(gene, state) {
     mutated_ids <- maf_table[Hugo_Symbol == gene, unique(Tumor_Sample_Barcode)]
     if (state == "Mutated") return(mutated_ids)
     return(setdiff(all_samples, mutated_ids))
   }
-  
+
   result_ids <- NULL
   for (i in 1:rows) {
     gene <- input[[paste0("gene_mut_", i, "_", cohort_id)]]
     state <- input[[paste0("state_mut_", i, "_", cohort_id)]]
     logic <- input[[paste0("logic_mut_", i, "_", cohort_id)]]
-    
+
     if (is.null(gene) || is.null(state)) next
-    
+
     ids <- get_ids_for_rule(gene, state)
-    
+
     if (is.null(result_ids)) {
       result_ids <- ids
     } else {
@@ -128,10 +128,10 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
         result_ids <- union(result_ids, ids)
       }
     }
-    
+
     if (logic == "END") break
   }
-  
+
   return(result_ids)
 }
 
@@ -141,10 +141,10 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
                                       min_value = NULL, max_value = NULL,
                                       min_percentile = 0, max_percentile = 100) {
   if (is.null(gene) || gene == "" || !gene %in% rownames(bulkseq_tpm)) return(clinical_data)
-  
+
   gene_expr <- bulkseq_tpm[gene, ]
   names(gene_expr) <- colnames(bulkseq_tpm)
-  
+
   if (threshold_type == "value") {
     if (is.null(min_value) || is.null(max_value) || is.na(min_value) || is.na(max_value)) return(clinical_data)
     keep_ids <- names(gene_expr)[gene_expr >= min_value & gene_expr <= max_value]
@@ -154,28 +154,105 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
     upper_cutoff <- quantile(gene_expr, probs = max_percentile / 100, na.rm = TRUE)
     keep_ids <- names(gene_expr)[gene_expr >= lower_cutoff & gene_expr <= upper_cutoff]
   }
-  
+
   clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% keep_ids, ]
   return(clinical_data)
 }
 
 filter_by_survival <- function(clinical_data, surv_var, threshold_type,
                                min_value = NULL, max_value = NULL,
-                               min_percentile = NULL, max_percentile = NULL) {
+                               min_percentile = NULL, max_percentile = NULL,
+                               require_event = FALSE, event_var = NULL) {
   if (is.null(surv_var) || !(surv_var %in% colnames(clinical_data))) return(clinical_data)
-  
+
   surv_data <- clinical_data[[surv_var]]
-  
+
   if (threshold_type == "percentile") {
+    if (is.null(min_percentile) || is.null(max_percentile) ||
+        is.na(min_percentile) || is.na(max_percentile)) return(clinical_data)
     min_thresh <- quantile(surv_data, probs = min_percentile / 100, na.rm = TRUE)
     max_thresh <- quantile(surv_data, probs = max_percentile / 100, na.rm = TRUE)
   } else {
+    if (is.null(min_value) || is.null(max_value) || is.na(min_value) || is.na(max_value)) return(clinical_data)
     min_thresh <- min_value
     max_thresh <- max_value
   }
-  
+
   filtered <- clinical_data[surv_data >= min_thresh & surv_data <= max_thresh, ]
+  if (isTRUE(require_event) && !is.null(event_var) && event_var %in% colnames(filtered)) {
+    filtered <- filtered[filtered[[event_var]] == 1 & !is.na(filtered[[event_var]]), ]
+  }
   return(filtered)
+}
+
+survival_event_column <- function(surv_var) {
+  switch(
+    surv_var,
+    PFS = "PFS_event",
+    OS = "OS_event",
+    ttct2line = "censt2line",
+    NULL
+  )
+}
+
+plot_export_controls_ui <- function(id, width = 7, height = 5, units = "in") {
+  tagList(
+    div(
+      class = "plot-export-controls",
+      fluidRow(
+        column(3, numericInput(paste0(id, "_pdf_width"), "PDF width", value = width, min = 0.1, step = 0.5)),
+        column(3, numericInput(paste0(id, "_pdf_height"), "PDF height", value = height, min = 0.1, step = 0.5)),
+        column(3, selectInput(paste0(id, "_pdf_units"), "Units", choices = c("in", "cm", "mm"), selected = units)),
+        column(3, tags$label(HTML("&nbsp;")), downloadButton(paste0("download_", id, "_pdf"), "PDF"))
+      )
+    )
+  )
+}
+
+.pdf_dim_to_inches <- function(value, units) {
+  value <- as.numeric(value)
+  if (!is.finite(value) || value <= 0) value <- 7
+  switch(
+    units,
+    cm = value / 2.54,
+    mm = value / 25.4,
+    value
+  )
+}
+
+render_plot_for_pdf <- function(file, draw_plot, width = 7, height = 5, units = "in") {
+  width_in <- .pdf_dim_to_inches(width, units)
+  height_in <- .pdf_dim_to_inches(height, units)
+  grDevices::pdf(file, width = width_in, height = height_in, onefile = TRUE)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  p <- draw_plot()
+  if (is.null(p)) return(invisible(NULL))
+  print(p)
+  invisible(p)
+}
+
+register_plot_pdf_download <- function(output, input, id, draw_plot, filename = NULL) {
+  output[[paste0("download_", id, "_pdf")]] <- downloadHandler(
+    filename = function() {
+      if (is.null(filename)) {
+        paste0(id, "_", Sys.Date(), ".pdf")
+      } else if (is.function(filename)) {
+        filename()
+      } else {
+        filename
+      }
+    },
+    content = function(file) {
+      render_plot_for_pdf(
+        file = file,
+        draw_plot = draw_plot,
+        width = input[[paste0(id, "_pdf_width")]],
+        height = input[[paste0(id, "_pdf_height")]],
+        units = input[[paste0(id, "_pdf_units")]]
+      )
+    }
+  )
 }
 
 create_picker_input <- function(inputId, label, choices) {
@@ -214,22 +291,22 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             create_picker_input(paste0("race_filter_", cohort_id), "Race (self-reported)", sort(unique(clinical_data$Race))),
             create_picker_input(paste0("genetic_ancestry_filter_", cohort_id), "Genetic Ancestry", sort(unique(clinical_data$genetic_ancestry))),
             uiOutput(paste0("age_filter_", cohort_id)),
-            
+
             # Clinical classification
             create_picker_input(paste0("stage_filter_", cohort_id), "ISS Stage", sort(unique(clinical_data$ISS))),
             create_picker_input(paste0("risk_filter_", cohort_id), "IMWG Risk Classification", sort(unique(clinical_data$IMWG_Risk_Class))),
             create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$Skerget_Cytogenetic_High_Risk))),
             create_picker_input(paste0("cgs_risk_filter_", cohort_id), "CGS Risk (Consensus Genomic Staging)", sort(unique(clinical_data$CGS_risk))),
-            
+
             # Subtypes
             create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_RNA_Subtype_Name))),
             create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_CNA_Subtype_Name))),
-            
+
             # Treatment
             create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First))),
             create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First))),
-            
-            # Regimen 
+
+            # Regimen
             create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$regimen)))
           ))
         } else if (category == "molecular") {
@@ -242,11 +319,11 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
             create_picker_input(paste0("diploidy_filter_", cohort_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
             create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
-            
+
             # Translocations
             create_picker_input(paste0("t_11_14_filter_", cohort_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
             create_picker_input(paste0("t_4_14_filter_", cohort_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
-            
+
             # Mutational markers
             create_picker_input(paste0("maf_filter_", cohort_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
             create_picker_input(paste0("apobec_filter_", cohort_id), "APOBEC", sort(unique(clinical_data$APOBEC))),
@@ -265,18 +342,18 @@ get_cohort_filters <- function(input, cohort_id, category) {
       race = input[[paste0("race_filter_", cohort_id)]],
       genetic_ancestry = input[[paste0("genetic_ancestry_filter_", cohort_id)]],
       age = input[[paste0("age_", cohort_id)]],
-      
+
       stage = input[[paste0("stage_filter_", cohort_id)]],
       risk = input[[paste0("risk_filter_", cohort_id)]],
       cyto_risk = input[[paste0("cyto_risk_filter_", cohort_id)]],
       cgs_risk  = input[[paste0("cgs_risk_filter_", cohort_id)]],
-      
+
       rna_subtype = input[[paste0("rna_subtype_filter_", cohort_id)]],
       cna_subtype = input[[paste0("cna_subtype_filter_", cohort_id)]],
-      
+
       triplet = input[[paste0("triplet_filter_", cohort_id)]],
       asct = input[[paste0("asct_filter_", cohort_id)]],
-      
+
       regimen = input[[paste0("regimen_filter_", cohort_id)]]
     ))
   } else if (category == "molecular") {
@@ -286,13 +363,13 @@ get_cohort_filters <- function(input, cohort_id, category) {
       del13q14 = input[[paste0("chr_13q14_del_filter_", cohort_id)]],
       del13q34 = input[[paste0("chr_13q34_del_filter_", cohort_id)]],
       del17p13 = input[[paste0("chr_17p13_del_filter_", cohort_id)]],
-      
+
       diploidy = input[[paste0("diploidy_filter_", cohort_id)]],
       chromothripsis = input[[paste0("chromothripsis_filter_", cohort_id)]],
-      
+
       t11_14 = input[[paste0("t_11_14_filter_", cohort_id)]],
       t4_14 = input[[paste0("t_4_14_filter_", cohort_id)]],
-      
+
       maf = input[[paste0("maf_filter_", cohort_id)]],
       apobec = input[[paste0("apobec_filter_", cohort_id)]],
       tp53 = input[[paste0("tp53_filter_", cohort_id)]],
@@ -303,7 +380,7 @@ get_cohort_filters <- function(input, cohort_id, category) {
 
 filter_cohort_data <- function(data, filters) {
   data <- as_tibble(data)  # For compatibility with dplyr pipes
-  
+
   data <- data %>%
     # Demographic filters
     apply_filter("Sex", filters$sex) %>%
@@ -316,22 +393,22 @@ filter_cohort_data <- function(data, filters) {
         .
       }
     } %>%
-    
+
     # Clinical classification
     apply_filter("ISS", filters$stage) %>%
     apply_filter("IMWG_Risk_Class", filters$risk) %>%
     apply_filter("Skerget_Cytogenetic_High_Risk", filters$cyto_risk) %>%
     apply_filter("CGS_risk", filters$cgs_risk) %>%
-    
+
     # Subtypes
     apply_filter("Skerget_RNA_Subtype_Name", filters$rna_subtype) %>%
     apply_filter("Skerget_CNA_Subtype_Name", filters$cna_subtype) %>%
-    
+
     # Treatment
     apply_filter("Triplet_First", filters$triplet) %>%
     apply_filter("ASCT_First", filters$asct) %>%
     apply_filter("regimen", filters$regimen) %>%
-    
+
     # Chromosomal abnormalities
     apply_filter("chr_1q21_gain", filters$q21_gain) %>%
     apply_filter("chr_1q21_amp", filters$q21_amp) %>%
@@ -340,17 +417,17 @@ filter_cohort_data <- function(data, filters) {
     apply_filter("chr_17p13_del", filters$del17p13) %>%
     apply_filter("Hyperdiploidy", filters$diploidy) %>%
     apply_filter("chromothripsis", filters$chromothripsis) %>%
-    
+
     # Translocations
     apply_filter("t_11_14", filters$t11_14) %>%
     apply_filter("t_4_14", filters$t4_14) %>%
-    
+
     # Mutational markers
     apply_filter("MAF_MAFB", filters$maf) %>%
     apply_filter("APOBEC", filters$apobec) %>%
     apply_filter("TP53_Funct_Copies", filters$tp53) %>%
     apply_filter("TP53_NS_Mut_Count", filters$tp53_ns)
-  
+
   return(data)
 }
 
@@ -368,17 +445,17 @@ generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
   features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class",
                 "CGS_risk", "ASCT_First", "Triplet_First", "Hyperdiploidy", "chromothripsis")
-  
+
   unique_values_counts_list <- lapply(features, function(feature) {
     data.frame(Value = names(table(selected_data[[feature]])),
                Count = as.integer(table(selected_data[[feature]])),
                Feature = feature)
   })
-  
+
   unique_values_counts_df <- do.call(rbind, unique_values_counts_list)
   # Ensure Feature is a factor with specified order
   unique_values_counts_df$Feature <- factor(unique_values_counts_df$Feature, levels = features)
-  
+
   ggplot(unique_values_counts_df, aes(x = Value, y = Count, fill = Feature)) +
     geom_bar(stat = "identity", position = position_dodge()) +
     facet_wrap(~ Feature, scales = "free") +
@@ -401,7 +478,7 @@ create_categorical_plot <- function(data, feature, feature_label) {
                      "<br>", feature_label, ": ", !!sym(feature),
                      "<br>Percentage: ", sprintf("%.2f", percentage), "%")
     )
-  
+
   ggplot(plot_data, aes_string(x = feature, y = "percentage", fill = "cohort", alpha = "cohort", text = "label")) +
     geom_bar(stat = "identity", position = "dodge") +
     labs(x = feature_label, y = "Percentage") +
@@ -420,7 +497,7 @@ create_continuous_plot <- function(data, feature, feature_label) {
         "<br>", feature_label, ": ", sprintf("%.2f", !!rlang::sym(feature))
       )
     )
-  
+
   ggplot(data, aes_string(x = "cohort", y = feature, fill = "cohort")) +
     # Cleaner boxplot
     geom_boxplot(width = 0.5, outlier.shape = NA, color = "#2b2b2b", alpha = 0.9) +
@@ -444,15 +521,20 @@ create_continuous_plot <- function(data, feature, feature_label) {
 }
 
 # Main function to create distribution plot
-create_distribution_plot <- function(data, feature, feature_label, continuous_features) {
+create_distribution_ggplot <- function(data, feature, feature_label, continuous_features) {
   is_continuous <- feature %in% continuous_features
-  
+
   if (!is_continuous) {
     p <- create_categorical_plot(data, feature, feature_label)
   } else {
     p <- create_continuous_plot(data, feature, feature_label)
   }
-  
+
+  p
+}
+
+create_distribution_plot <- function(data, feature, feature_label, continuous_features) {
+  p <- create_distribution_ggplot(data, feature, feature_label, continuous_features)
   ggplotly(p, tooltip = "text") %>%
     layout(hovermode = "x")
 }
@@ -478,7 +560,7 @@ cohens_d <- function(x, y) {
 test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
   cohort1_vals <- cohort1_vals[!is.na(cohort1_vals)]
   cohort2_vals <- cohort2_vals[!is.na(cohort2_vals)]
-  
+
   if (length(cohort1_vals) <= 2 || length(cohort2_vals) <= 2) {
     return(list(
       test_name = "Insufficient data",
@@ -490,16 +572,16 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
       effect = "NA"
     ))
   }
-  
+
   # normality
   normal1 <- tryCatch(shapiro.test(cohort1_vals)$p.value > 0.05, error = function(e) FALSE)
   normal2 <- tryCatch(shapiro.test(cohort2_vals)$p.value > 0.05, error = function(e) FALSE)
-  
+
   # defaults
   effect_num <- NA_real_
   effect_label <- "NA"
   direction <- "NA"
-  
+
   if (normal1 && normal2 && length(cohort1_vals) >= 3 && length(cohort2_vals) >= 3) {
     # t-test
     test_result <- tryCatch(t.test(cohort1_vals, cohort2_vals), error = function(e) NULL)
@@ -533,12 +615,12 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
       statistic <- "NA"; p_value <- NA
     }
   }
-  
+
   cohort1_summary <- paste0("Mean: ", round(mean(cohort1_vals), 2),
                             " (SD: ", round(sd(cohort1_vals), 2), ")")
   cohort2_summary <- paste0("Mean: ", round(mean(cohort2_vals), 2),
                             " (SD: ", round(sd(cohort2_vals), 2), ")")
-  
+
   list(
     test_name = test_name,
     statistic = statistic,
@@ -555,7 +637,7 @@ test_continuous_variable <- function(cohort1_vals, cohort2_vals) {
 test_categorical_variable <- function(data, feature) {
   contingency_table <- tryCatch(table(data$cohort, data[[feature]], useNA = "no"),
                                 error = function(e) NULL)
-  
+
   if (is.null(contingency_table) || sum(contingency_table) == 0) {
     return(list(
       test_name = "Insufficient data",
@@ -567,11 +649,11 @@ test_categorical_variable <- function(data, feature) {
       effect = "NA"
     ))
   }
-  
+
   min_cell_count <- min(contingency_table)
   total_cells <- length(contingency_table)
   cells_less_than_5 <- sum(contingency_table < 5)
-  
+
   if (min_cell_count == 0 || cells_less_than_5 > (total_cells/2)) {
     return(list(
       test_name = "Low frequency categories",
@@ -583,10 +665,10 @@ test_categorical_variable <- function(data, feature) {
       effect = "NA"
     ))
   }
-  
+
   expected_freq <- tryCatch(chisq.test(contingency_table)$expected, error = function(e) NULL)
   use_fisher <- !is.null(expected_freq) && any(expected_freq < 5)
-  
+
   if (use_fisher) {
     if (nrow(contingency_table) == 2 && ncol(contingency_table) == 2) {
       test_result <- tryCatch(fisher.test(contingency_table), error = function(e) NULL)
@@ -618,21 +700,21 @@ test_categorical_variable <- function(data, feature) {
       statistic <- "NA"; p_value <- NA
     }
   }
-  
+
   # Summaries
   if ("Cohort1" %in% rownames(contingency_table) && "Cohort2" %in% rownames(contingency_table)) {
     cohort1_counts <- contingency_table["Cohort1", ]
     cohort2_counts <- contingency_table["Cohort2", ]
     cohort1_total <- sum(cohort1_counts)
     cohort2_total <- sum(cohort2_counts)
-    
-    cohort1_summary <- paste(names(cohort1_counts), 
+
+    cohort1_summary <- paste(names(cohort1_counts),
                              paste0(cohort1_counts, " (", round(cohort1_counts/cohort1_total*100, 1), "%)"),
                              sep = ": ", collapse = "; ")
     cohort2_summary <- paste(names(cohort2_counts),
                              paste0(cohort2_counts, " (", round(cohort2_counts/cohort2_total*100, 1), "%)"),
                              sep = ": ", collapse = "; ")
-    
+
     # Direction: level with largest absolute proportion difference
     p1 <- cohort1_counts / cohort1_total
     p2 <- cohort2_counts / cohort2_total
@@ -654,7 +736,7 @@ test_categorical_variable <- function(data, feature) {
     direction <- "NA"
     effect_label <- "NA"
   }
-  
+
   list(
     test_name = test_name,
     statistic = statistic,
@@ -707,11 +789,11 @@ create_significance_table <- function(data, clinical_features, continuous_featur
     Significance = character(),
     stringsAsFactors = FALSE
   )
-  
+
   for (feature in clinical_features) {
     if (sum(!is.na(data[[feature]])) < 10) next
     is_continuous <- feature %in% continuous_features
-    
+
     if (is_continuous) {
       cohort1_vals <- data[data$cohort == "Cohort1", feature]
       cohort2_vals <- data[data$cohort == "Cohort2", feature]
@@ -719,9 +801,9 @@ create_significance_table <- function(data, clinical_features, continuous_featur
     } else {
       test_results <- test_categorical_variable(data, feature)
     }
-    
+
     significance <- get_significance_level(test_results$p_value)
-    
+
     results <- rbind(results, data.frame(
       Feature = feature,
       Type = ifelse(is_continuous, "Continuous", "Categorical"),
@@ -736,14 +818,14 @@ create_significance_table <- function(data, clinical_features, continuous_featur
       stringsAsFactors = FALSE
     ))
   }
-  
+
   results$P_Value_Display <- sapply(results$P_Value, format_p_value)
-  
+
   display_table <- results[, c("Feature", "Type", "Test_Used", "P_Value_Display",
                                "Statistic", "Direction", "Effect", "Significance")]
   colnames(display_table) <- c("Clinical Feature", "Type", "Statistical Test", "P-Value",
                                "Test Statistic", "Direction", "Effect", "Significance")
-  
+
   display_table <- display_table[order(results$P_Value, na.last = TRUE), ]
   return(display_table)
 }
@@ -753,15 +835,15 @@ create_significance_table <- function(data, clinical_features, continuous_featur
 # Get clinical feature choices for selectInput
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",
-                       "PFS_event", "PFS", "OS", 
+                       "PFS_event", "PFS", "OS",
                        "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event", "ttct2line", "censt2line")
-  
+
   if (!is.null(exclude_cols)) {
     exclude_cols <- c(default_exclude, exclude_cols)
   } else {
     exclude_cols <- default_exclude
   }
-  
+
   setdiff(colnames(clinical_data), exclude_cols)
 }
 
@@ -781,37 +863,37 @@ plot_cohort_survival <- function(data,
   stopifnot(all(c("cohort", time_col, event_col) %in% names(data)))
   surv_obj <- survival::Surv(time = data[[time_col]],
                              event = data[[event_col]])
-  
+
   fit <- do.call(survival::survfit,
                  list(surv_obj ~ cohort, data = data))
-  
+
   xmax <- max(data[[time_col]], na.rm = TRUE)
   pval_x <- if (is.finite(xmax)) xmax * 0.6 else break_by
-  
+
   survminer::ggsurvplot(
     fit, data = data,
     # Core aesthetics
     palette = c("#E41A1C", "#4DBBD5"),  # red = Cohort1, teal = Cohort2
     linetype = c("solid", "solid"),
     size = 1,
-    
+
     conf.int = TRUE,
     pval = TRUE,
     pval.coord = c(pval_x, 0.1),
-    
+
     title = "",
     xlab = xlab,
     ylab = "Survival Probability",
     legend.title = "",
     legend.labs = legend_labs,
-    
+
     # Risk table
     risk.table = TRUE,
     risk.table.height = 0.25,
     risk.table.title = "Number at risk",
     risk.table.fontsize = 3.5,
     tables.theme = survminer::theme_cleantable(),
-    
+
     ggtheme = ggplot2::theme_bw() + ggplot2::theme(
       panel.grid.minor = ggplot2::element_blank(),
       axis.title = ggplot2::element_text(face = "bold", size = 12),
@@ -820,7 +902,7 @@ plot_cohort_survival <- function(data,
       legend.text = ggplot2::element_text(size = 10),
       plot.title = ggplot2::element_text(face = "bold", size = 14, hjust = 0.5)
     ),
-    
+
     break.time.by = break_by,
     surv.scale = "percent"
   )
@@ -918,7 +1000,7 @@ plot_cohort_survival <- function(data,
   sm <- summary(fit)
   co <- as.data.frame(sm$coefficients)
   ci <- as.data.frame(sm$conf.int)
-  
+
   # Build tidy frame (drop non-finite)
   df <- data.frame(
     term     = rownames(co),
@@ -933,13 +1015,13 @@ plot_cohort_survival <- function(data,
     return(ggplot2::ggplot() + ggplot2::geom_blank() +
              ggplot2::labs(title = "No finite HRs to plot"))
   }
-  
+
   # clip extreme CIs to keep axis sane; adjust limits from remaining finite values
   lo_min <- max(min(df$lo[df$lo > 0 & is.finite(df$lo)], na.rm = TRUE), 1e-3)
   hi_max <- min(max(df$hi[is.finite(df$hi)], na.rm = TRUE), 1e3)
-  
+
   df$term <- factor(df$term, levels = rev(df$term))
-  
+
   ggplot2::ggplot(df, ggplot2::aes(x = term, y = hr)) +
     ggplot2::geom_point() +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = pmax(lo, lo_min), ymax = pmin(hi, hi_max)), width = 0.2) +
@@ -955,10 +1037,10 @@ plot_cohort_survival <- function(data,
   # what DESeq2 will use as rownames
   ids_from_counts <- colnames(count_mat)
   ids_from_clin   <- as.character(clin[[sample_col]])
-  
+
   dup_counts <- unique(ids_from_counts[duplicated(ids_from_counts)])
   dup_clin   <- unique(ids_from_clin[duplicated(ids_from_clin)])
-  
+
   if (length(dup_counts) || length(dup_clin)) {
     # Build a short, user-friendly message
     list_preview <- function(x) {
@@ -985,31 +1067,84 @@ process_deseq2 <- function(filtered_data, bulkseq, min_counts=5, min_samples=5) 
   clinical_combined <- clinical_combined[clinical_combined$Tumor_Sample_Barcode %in% colnames(bulkseq),]
   count_data <- bulkseq[, clinical_combined$Tumor_Sample_Barcode]
   count_data <- round(count_data)
-  
+
   .check_duplicate_samples(count_data, clinical_combined, context = "bulk RNA-seq (DESeq2)")
-  
+
   # Create metadata
   metadata <- data.frame(
     row.names = clinical_combined$Tumor_Sample_Barcode,
     condition = as.factor(clinical_combined$cohort)
   )
-  
+
   # Filter genes
   keep_genes <- rowSums(count_data >= min_counts) >= min_samples
   count_data <- count_data[keep_genes, ]
-  
+
   # DESeq2 analysis
   dds <- DESeqDataSetFromMatrix(countData = count_data, colData = metadata, design = ~ condition)
   dds <- dds[rowSums(counts(dds)) > 1, ]
   dds <- DESeq(dds)
   results <- results(dds, contrast = c("condition", "Cohort1", "Cohort2"))
-  
+
   results <- as.data.frame(results)
   results$significant <- ifelse(results$padj < 0.05 & results$log2FoldChange > 1.5, "Up-regulated",
                                 ifelse(results$padj < 0.05 & results$log2FoldChange < -1.5, "Down-regulated", "Not Significant"))
   results <- results[!is.na(results$significant), ]
-  
+
   return(results)
+}
+
+.deseq2_volcano_df <- function(deseq2_result, p_thr, logfc_thr) {
+  stopifnot(all(c("log2FoldChange","padj") %in% colnames(deseq2_result)))
+
+  deseq2_result %>%
+    tibble::rownames_to_column("gene") %>%
+    dplyr::mutate(
+      padj = as.numeric(padj),
+      padj_safe = dplyr::if_else(!is.finite(padj) | is.na(padj) | padj == 0, 1, padj),
+      neglog10padj = -log10(padj_safe),
+      significant = dplyr::case_when(
+        padj < p_thr & log2FoldChange >  logfc_thr ~ "Up-regulated",
+        padj < p_thr & log2FoldChange < -logfc_thr ~ "Down-regulated",
+        TRUE ~ "Not significant"
+      )
+    )
+}
+
+deseq2_volcano_ggplot <- function(deseq2_result, p_thr, logfc_thr, n_labels = 10,
+                                  palette = c(
+                                    "Not significant" = "#B3B3B3",
+                                    "Up-regulated"    = "#D55E00",
+                                    "Down-regulated"  = "#0072B2"
+                                  )) {
+  df <- .deseq2_volcano_df(deseq2_result, p_thr, logfc_thr)
+  ythr <- -log10(p_thr)
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = log2FoldChange, y = neglog10padj, color = significant)) +
+    ggplot2::geom_point(alpha = 0.7, size = 1.6) +
+    ggplot2::geom_vline(xintercept = c(-logfc_thr, logfc_thr), linetype = "dotted", color = "grey40") +
+    ggplot2::geom_hline(yintercept = ythr, linetype = "dotted", color = "grey40") +
+    ggplot2::scale_color_manual(values = palette) +
+    ggplot2::labs(x = "log2 fold change", y = "-log10 adjusted p-value", color = "Status") +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "top")
+
+  lab_df <- df %>%
+    dplyr::filter(significant != "Not significant" & is.finite(padj)) %>%
+    dplyr::arrange(padj) %>%
+    dplyr::slice(seq_len(min(n_labels, dplyr::n())))
+
+  if (nrow(lab_df) > 0) {
+    p <- p + ggrepel::geom_text_repel(
+      data = lab_df,
+      ggplot2::aes(label = gene),
+      size = 3,
+      max.overlaps = Inf,
+      show.legend = FALSE
+    )
+  }
+
+  p
 }
 
 # Function for volcano plot
@@ -1020,20 +1155,8 @@ deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcan
                                     "Up-regulated"    = "#D55E00",  # vermilion
                                     "Down-regulated"  = "#0072B2"   # blue
                                   )) {
-  stopifnot(all(c("log2FoldChange","padj") %in% colnames(deseq2_result)))
-  
-  df <- deseq2_result %>%
-    tibble::rownames_to_column("gene") %>%
+  df <- .deseq2_volcano_df(deseq2_result, p_thr, logfc_thr) %>%
     dplyr::mutate(
-      padj = as.numeric(padj),
-      # avoid -log10(0) = Inf and keep NAs out of the way
-      padj_safe = dplyr::if_else(!is.finite(padj) | is.na(padj) | padj == 0, 1, padj),
-      neglog10padj = -log10(padj_safe),
-      significant = dplyr::case_when(
-        padj < p_thr & log2FoldChange >  logfc_thr ~ "Up-regulated",
-        padj < p_thr & log2FoldChange < -logfc_thr ~ "Down-regulated",
-        TRUE ~ "Not significant"
-      ),
       point_size = dplyr::if_else(significant == "Not significant", nonsig_size, sig_size),
       tooltip = paste0(
         "<b>", gene, "</b>",
@@ -1042,12 +1165,12 @@ deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcan
         "<br>status: ", significant
       )
     )
-  
+
   # axis limits for threshold lines (symmetric x-range feels cleaner)
   xmax <- max(abs(df$log2FoldChange), na.rm = TRUE)
   ymax <- max(df$neglog10padj, na.rm = TRUE)
   ythr <- -log10(p_thr)
-  
+
   p <- plotly::plot_ly(
     data = df, source = src,
     x = ~log2FoldChange, y = ~neglog10padj,
@@ -1114,14 +1237,14 @@ deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcan
       modeBarButtonsToRemove = c("autoScale2d","lasso2d","select2d","toggleSpikelines"),
       toImageButtonOptions = list(format = "png", filename = "volcano_plot")
     )
-  
+
   # labels for top significant genes (by padj)
   lab_df <- df %>%
     dplyr::filter(significant != "Not significant" & is.finite(padj)) %>%
     dplyr::arrange(padj) %>%
     dplyr::slice(seq_len(min(n_labels, dplyr::n()))) %>%
     dplyr::mutate(label = htmltools::htmlEscape(as.character(gene)))
-  
+
   if (nrow(lab_df) > 0) {
     p <- p %>%
       plotly::add_trace(
@@ -1147,26 +1270,26 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
       value_type <- "TPM"
     }
   }
-  
+
   merged_data <- count_data_tpm %>%
     t() %>%
     as.data.frame() %>%
     rownames_to_column(var = "Tumor_Sample_Barcode") %>%
     inner_join(clinical_combined, by = "Tumor_Sample_Barcode")
-  
+
   # Ensure 'cohort' is a factor
   merged_data$cohort <- as.factor(merged_data$cohort)
-  
+
   # Filter for the gene of interest
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     rename(TPM = all_of(gene_interested))
-  
+
   # Calculate median TPM for each cohort
   median_tpm <- gene_data %>%
     group_by(cohort) %>%
     summarise(median_TPM = median(TPM, na.rm = TRUE))
-  
+
   # Calculate the number of bins using the Freedman-Diaconis rule
   bin_width <- 2 * IQR(gene_data$TPM, na.rm = TRUE) / (length(gene_data$TPM)^(1/3))
   num_bins <- max(1, round((max(gene_data$TPM, na.rm = TRUE) - min(gene_data$TPM, na.rm = TRUE)) / bin_width))
@@ -1174,17 +1297,17 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
     num_bins <- 30
     bin_width <- max(1, round((max(gene_data$TPM, na.rm = TRUE) - min(gene_data$TPM, na.rm = TRUE)) / num_bins))
   }
-  
+
   # Create a temp p for stats
   p_temp <- ggplot(gene_data, aes(x = TPM)) +
     geom_histogram(bins = num_bins) +
     geom_density(adjust = 1.5)
-  
+
   # Extract data
   p_build <- ggplot_build(p_temp)
   histogram_data <- p_build$data[[1]]
   density_data <- p_build$data[[2]]
-  
+
   scale_factor <- max(histogram_data$count) / max(density_data$density)
   p <- ggplot(gene_data, aes(x = TPM, fill = cohort, color = cohort)) +
     geom_histogram(aes(y = after_stat(count),
@@ -1197,37 +1320,37 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
          fill = "Cohort",
          color = "Cohort") +
     theme_minimal()
-  
+
   return(p)
 }
 
 # Function to draw boxplot of tpm values and use Wilcoxon test for p values
 tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data_type) {
-  
+
   value_label <- if (data_type == "scRNAseq") "Log-normalized Expression" else "TPM"
   value_col   <- value_label
-  
+
   y_mapping <- if (make.names(value_col) != value_col) paste0("`", value_col, "`") else value_col
-  
+
   merged_data <- count_data_tpm %>%
     t() %>%
     as.data.frame() %>%
     rownames_to_column(var = "Tumor_Sample_Barcode") %>%
     inner_join(clinical_combined, by = "Tumor_Sample_Barcode")
-  
+
   merged_data$cohort <- as.factor(merged_data$cohort)
-  
+
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     dplyr::rename(!!value_col := all_of(gene_interested))
-  
+
   max_y <- suppressWarnings(max(gene_data[[value_col]], na.rm = TRUE))
-  
+
   p <- ggpubr::ggboxplot(gene_data, x = "cohort", y = y_mapping,
                          color = "cohort", add = "jitter") +
     labs(x = "Cohort",
          y = paste0(value_label, " of ", gene_interested))
-  
+
   if (is.finite(max_y)) {
     p <- p + ggpubr::stat_compare_means(method = "wilcox.test",
                                         label = "p.format",
@@ -1239,7 +1362,7 @@ tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data
 # Function to create distribution table for gene of interest
 tpm_distr_table <- function(count_data_tpm, gene_interested) {
   gene_tpm <- as.numeric(count_data_tpm[gene_interested, ])
-  
+
   # TPM quantile distribution for gene of interest
   quartiles <- quantile(gene_tpm, probs = c(0, 0.25, 0.5, 0.75, 1))
   quartile_table <- data.frame(
@@ -1264,35 +1387,35 @@ tpm_distr_survival <- function(gene_tpm, selected_clinical, cohorting_method) {
   gene_interested <- rownames(gene_tpm)
   all_samples <- colnames(gene_tpm)
   gene_tpm <- as.numeric(gene_tpm)
-  
+
   if (cohorting_method == "quartiles") {
     # Cohort by quartiles
     quartiles <- quantile(gene_tpm, probs = c(0, 0.25, 0.5, 0.75, 1))
-    
+
     # Prevent 'breaks' not unique error
     epsilon <- .Machine$double.eps
     quartiles <- quartiles + cumsum(duplicated(quartiles)) * epsilon
-    
+
     # Create cohort
     cohort <- cut(gene_tpm,
                   breaks = quartiles,
                   labels = c("Q1", "Q2", "Q3", "Q4"),
                   include.lowest = TRUE)
-    
+
   } else if (cohorting_method == "median") {
     # Cohort by median
     median_value <- median(gene_tpm, na.rm = TRUE)
     cohort <- ifelse(gene_tpm <= median_value, "Below Median", "Above Median")
   }
-  
+
   # Map cohort to clinical data
   cohort_df <- data.frame(Tumor_Sample_Barcode = all_samples,
                           cohort = cohort)
-  
+
   selected_clinical <- merge(selected_clinical, cohort_df, by = "Tumor_Sample_Barcode")
-  
+
   # Some samples does not have PFS and PFS_event, so the num of samples used in survival curve and selected_clinical is not consistent
-  # Num of NAs: PFS, PFS_event; 308, 12. 
+  # Num of NAs: PFS, PFS_event; 308, 12.
   # Survival curves
   surv_object <- Surv(time = selected_clinical$PFS, event = selected_clinical$PFS_event)
   fit <- do.call(survfit, list(surv_object ~ cohort, data = selected_clinical))
@@ -1309,19 +1432,19 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
   # Intersect
   inter_samples <- intersect(colnames(ssgsea_result), clinical_combined$Tumor_Sample_Barcode)
   clinical_combined <- clinical_combined[clinical_combined$Tumor_Sample_Barcode %in% inter_samples, c("Tumor_Sample_Barcode", "cohort")]
-  
+
   req(length(unique(clinical_combined$cohort)) == 2)
-  
+
   ssgsea_result <- ssgsea_result[,inter_samples]
   ssgsea_result <- t(scale(t(ssgsea_result)))
-  
+
   # Transpose ssGSEA result
   ssgsea_result_t <- as.data.frame(t(ssgsea_result))
   ssgsea_result_t$Tumor_Sample_Barcode <- rownames(ssgsea_result_t)
-  
+
   # Merge
   merged_data <- merge(clinical_combined, ssgsea_result_t, by = "Tumor_Sample_Barcode")
-  
+
   # Transform to long data
   long_data <- pivot_longer(
     merged_data,
@@ -1330,20 +1453,20 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
     values_to = "EnrichmentScore"
   )
   colnames(long_data)[1:2] <- c("Sample", "Cohort")
-  
-  
+
+
   unique_gene_sets <- unique(long_data$GeneSet)
   wilcox_results <- data.frame(GeneSet = character(), p_value = numeric(), stringsAsFactors = FALSE)
-  
+
   for (gene_set in unique_gene_sets) {
     subset_data <- filter(long_data, GeneSet == gene_set)
     wilcox_result <- wilcox.test(EnrichmentScore ~ Cohort, data = subset_data)
     wilcox_results <- rbind(wilcox_results, data.frame(GeneSet = gene_set, p_value = wilcox_result$p.value))
   }
-  
+
   # Adjust p-values using Benjamini-Hochberg method
   wilcox_results$adjusted_p_value <- p.adjust(wilcox_results$p_value, method = "BH")
-  
+
   # Add significance stars based on p-value
   wilcox_results <- wilcox_results %>%
     mutate(Significance = case_when(
@@ -1352,39 +1475,39 @@ compute_significant_gene_sets <- function(ssgsea_result, clinical_combined) {
       adjusted_p_value < 0.05 ~ "*",
       TRUE ~ "ns"
     ))
-  
+
   # Add direction
   wilcox_results$Direction <- ''
   for (gene_set in unique(wilcox_results$GeneSet)) {
-    
+
     cohort1_mean <- mean(as.numeric(unlist(long_data[long_data$GeneSet == gene_set & long_data$Cohort == 'Cohort1', 'EnrichmentScore'])), na.rm = TRUE)
     cohort2_mean <- mean(as.numeric(unlist(long_data[long_data$GeneSet == gene_set & long_data$Cohort == 'Cohort2', 'EnrichmentScore'])), na.rm = TRUE)
-    
+
     if (cohort1_mean > cohort2_mean) {
       direction <- 'Up'
     } else {
       direction <- 'Down'
     }
-    
+
     wilcox_results[wilcox_results$GeneSet == gene_set, 'Direction'] <- direction
   }
-  
+
   return(list(wilcox_results = wilcox_results, long_data = long_data))
 }
 
 create_violin_plot <- function(wilcox_results, long_data) {
   # Sort significant gene sets by p_value and select top 10
-  top_significant_gene_sets <- wilcox_results %>% 
+  top_significant_gene_sets <- wilcox_results %>%
     filter(Significance != "ns") %>%
     arrange(adjusted_p_value) %>%
     head(10)
-  
+
   # Filter data for top significant gene sets
   top_significant_data <- filter(long_data, GeneSet %in% top_significant_gene_sets$GeneSet)
-  
+
   # Merge significance stars with top_significant_data
   top_significant_data <- merge(top_significant_data, top_significant_gene_sets, by = "GeneSet")
-  
+
   # Violin plot
   dodge <- position_dodge(width=0.6)
   p <- ggplot(top_significant_data, aes(x = GeneSet, y = EnrichmentScore, fill = Cohort)) +
@@ -1399,7 +1522,7 @@ create_violin_plot <- function(wilcox_results, long_data) {
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     # scale_x_discrete(labels = function(x) strwrap(x, width = 10)) + # What's causing the `$<-.data.frame`(`*tmp*`,... error
     scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
-  
+
   return(p)
 }
 
@@ -1410,10 +1533,10 @@ celltype_boxplot <- function(cohort_info, sc_meta) {
     group_by(public_id, celltypes) %>%
     summarise(count = n()) %>%
     mutate(proportion = count / sum(count))
-  
+
   # Merge patient abundance with clinical data
   merged_data <- merge(patient_abundance, cohort_info, by = "public_id")
-  
+
   req(length(unique(merged_data$cohort)) == 2)
   # Compare cell type abundance between cohorts
   comparison_results <- merged_data %>%
@@ -1422,7 +1545,7 @@ celltype_boxplot <- function(cohort_info, sc_meta) {
       p_value = wilcox.test(proportion ~ cohort)$p.value
     ) %>%
     mutate(p_adj = p.adjust(p_value, method = "BH"))
-  
+
   comparison_results <- comparison_results %>%
     mutate(Significance = case_when(
       p_value < 0.001 ~ "***",
@@ -1430,9 +1553,9 @@ celltype_boxplot <- function(cohort_info, sc_meta) {
       p_value < 0.05 ~ "*",
       TRUE ~ "ns"
     ))
-  
+
   merged_data <- merge(merged_data, comparison_results, by = "celltypes")
-  
+
   # Create the boxplot
   ggplot(merged_data, aes(x = celltypes, y = proportion, fill = cohort)) +
     geom_boxplot() +
@@ -1453,13 +1576,13 @@ celltype_proportion <- function(cohort_info, sc_meta) {
     group_by(cohort, celltypes) %>%
     summarise(count = n()) %>%
     mutate(proportion = count / sum(count) * 100)
-  
+
   colors <- c(
-    "CD4_T_cells" = "#7b3294", 
-    "CD8_T_cells" = "#c2a5cf", 
+    "CD4_T_cells" = "#7b3294",
+    "CD8_T_cells" = "#c2a5cf",
     "B_cells" = "#a6dba0",
-    "Monocytes" = "#008837",  
-    "NK_cells" = "#fdae61", 
+    "Monocytes" = "#008837",
+    "NK_cells" = "#fdae61",
     "PlasmaCells" = "#e66101"
   )
   # Set the order of the cohort factor levels
@@ -1473,7 +1596,7 @@ celltype_proportion <- function(cohort_info, sc_meta) {
                fill = "white", # Background for the label
                label.padding = unit(0.15, "lines"),
                color = "black", # Set text color to black for clarity
-               fontface = "bold") + 
+               fontface = "bold") +
     scale_fill_manual(values = colors) +
     labs(title = "Cell Proportions by Cohort", y = "Cohort", x = "Percentage (%)") +
     theme_minimal() +
@@ -1490,24 +1613,24 @@ cell_cycle_hist <- function(cohort_info, sc_meta, celltypes) {
   if (!('All' %in% celltypes)) {
     sc_meta <- sc_meta[sc_meta$celltypes %in% celltypes, ]
   }
-  
+
   if (length(celltypes) == 0){
     showNotification("No cell types selected. Please select at least one.", type = "error")
     return(NULL)
   }
-  
+
   sc_meta <- merge(sc_meta, cohort_info, by = "public_id")
-  
+
   phase_cohort_counts <- table(sc_meta$Phase, sc_meta$cohort)
   phase_cohort_df <- as.data.frame(phase_cohort_counts)
   colnames(phase_cohort_df) <- c("Phase", "Cohort", "Count")
-  
+
   # Calculate the percentage of cells in each phase within each cohort
   phase_cohort_summary <- phase_cohort_df %>%
     group_by(Cohort) %>%
     mutate(Total = sum(Count),
            Percentage = (Count / Total) * 100)
-  
+
   # Create the histogram plot by cohort
   ggplot(phase_cohort_summary, aes(x = Phase, y = Percentage, fill = Cohort)) +
     geom_bar(stat = "identity", position = "dodge") +
@@ -1524,18 +1647,18 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
   create_single_plot <- function(data, x_feature, y_feature) {
     # Ensure factors are properly ordered
     data[[x_feature]] <- factor(data[[x_feature]])
-    
+
     # Handle NA values in a cleaner way
     data[[y_feature]] <- ifelse(is.na(data[[y_feature]]), "NA", as.character(data[[y_feature]]))
     data[[y_feature]] <- factor(data[[y_feature]])
-    
+
     # Count occurrences of each combination
     prop_data <- data %>%
       group_by(!!sym(x_feature), !!sym(y_feature)) %>%
       summarise(count = n(), .cohorts = 'drop') %>%
       group_by(!!sym(x_feature)) %>%
       mutate(proportion = count / sum(count))
-    
+
     # Create plot
     p <- ggplot(prop_data, aes(x = !!sym(x_feature), y = proportion, fill = !!sym(y_feature))) +
       geom_bar(stat = "identity", position = "stack", color = "black") +
@@ -1545,23 +1668,23 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
            fill = y_feature) +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
-    
+
     return(p)
   }
-  
+
   # Create a list of plots
   plot_list <- lapply(y_features, function(y) {
     create_single_plot(data, x_feature, y)
   })
-  
+
   # Determine grid layout based on number of plots
   n_plots <- length(plot_list)
   n_cols <- min(3, n_plots)  # Maximum 3 columns
   n_rows <- ceiling(n_plots / n_cols)
-  
+
   # Arrange plots in a grid
   grid_plot <- do.call(grid.arrange, c(plot_list, ncol = n_cols))
-  
+
   return(grid_plot)
 }
 
@@ -1588,15 +1711,15 @@ create_distribution_stacked_barplot <- function(data, x_feature, y_features) {
   if (length(inter) < 2) {
     warning("Very small overlap between pseudobulk and clinical")
   }
-  
+
   # Keep one clinical row per base_id
   clin_one <- clinical_combined[clinical_combined$base_id %in% inter, , drop = FALSE]
-  
+
   # Reorder columns to the clinical order and relabel columns to Tumor_Sample_Barcode
   pb_tpm2 <- pb_tpm[, inter, drop = FALSE]
   pb_tpm2 <- pb_tpm2[, clin_one$base_id, drop = FALSE]
   colnames(pb_tpm2) <- clin_one$Tumor_Sample_Barcode
-  
+
   list(pb_tpm = pb_tpm2, clinical_aligned = clin_one, inter_base_ids = inter)
 }
 
@@ -1604,12 +1727,12 @@ pseudobulk_diff_counts <- function(pb_counts, clin) {
   stopifnot(ncol(pb_counts) == nrow(clin))
   grp <- factor(clin$cohort)
   if (length(levels(grp)) != 2) stop("Need exactly two cohorts for differential analysis")
-  
+
   # Round to integers just in case
   cnt <- round(pb_counts)
   keep <- rowSums(cnt) > 1
   cnt <- cnt[keep, , drop = FALSE]
-  
+
   coldata <- data.frame(row.names = colnames(cnt), condition = grp)
   dds <- DESeq2::DESeqDataSetFromMatrix(countData = cnt, colData = coldata, design = ~ condition)
   dds <- DESeq2::DESeq(dds)
@@ -1618,4 +1741,3 @@ pseudobulk_diff_counts <- function(pb_counts, clin) {
   res <- res[, intersect(c("baseMean","log2FoldChange","pvalue","padj"), names(res))]
   res
 }
-
