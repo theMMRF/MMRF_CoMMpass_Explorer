@@ -1583,7 +1583,7 @@ celltype_proportion <- function(cohort_info, sc_meta) {
     "B_cells" = "#a6dba0",
     "Monocytes" = "#008837",
     "NK_cells" = "#fdae61",
-    "PlasmaCells" = "#e66101"
+    "Plasma_cells" = "#e66101"
   )
   # Set the order of the cohort factor levels
   cell_proportions$cohort <- factor(cell_proportions$cohort, levels = c("Cohort2", "Cohort1"))
