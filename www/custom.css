@@ -196,3 +196,21 @@ hr {
   width: 100%;
 }
 
+.cohort-definition-card {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-left: 4px solid #ccc;
+  background: #fafafa;
+}
+
+.cohort-definition-card p {
+  margin: 4px 0 0 0;
+}
+
+.cohort-definition-card-c1 {
+  border-left-color: #E41A1C;
+}
+
+.cohort-definition-card-c2 {
+  border-left-color: #4DBBD5;
+}

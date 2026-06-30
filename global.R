@@ -468,6 +468,8 @@ generate_summary_plot <- function(cohort_selected, filtered_data) {
 }
 
 create_categorical_plot <- function(data, feature, feature_label) {
+  cohort_levels <- unique(as.character(data$cohort))
+  cohort_colors <- setNames(c("#E87D72", "#5BAEB0")[seq_along(cohort_levels)], cohort_levels)
   plot_data <- data %>%
     group_by(cohort, !!sym(feature)) %>%
     summarise(n = n(), .cohorts = "drop") %>%
@@ -482,14 +484,16 @@ create_categorical_plot <- function(data, feature, feature_label) {
   ggplot(plot_data, aes_string(x = feature, y = "percentage", fill = "cohort", alpha = "cohort", text = "label")) +
     geom_bar(stat = "identity", position = "dodge") +
     labs(x = feature_label, y = "Percentage") +
-    scale_alpha_manual(values = c(Cohort1 = 0.9, Cohort2 = 0.9)) +
-    scale_fill_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
+    scale_alpha_manual(values = setNames(rep(0.9, length(cohort_levels)), cohort_levels)) +
+    scale_fill_manual(values = cohort_colors) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
 # Create distribution plot data for continuous variables
 create_continuous_plot <- function(data, feature, feature_label) {
+  cohort_levels <- unique(as.character(data$cohort))
+  cohort_colors <- setNames(c("#E87D72", "#5BAEB0")[seq_along(cohort_levels)], cohort_levels)
   data <- data %>%
     dplyr::mutate(
       label = paste0(
@@ -507,8 +511,8 @@ create_continuous_plot <- function(data, feature, feature_label) {
     # Emphasize the median
     stat_summary(fun = median, geom = "point",
                  shape = 21, size = 3.2, fill = "white", color = "black") +
-    scale_fill_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
-    scale_color_manual(values = c(Cohort1 = "#E87D72", Cohort2 = "#5BAEB0")) +
+    scale_fill_manual(values = cohort_colors) +
+    scale_color_manual(values = cohort_colors) +
     labs(x = "Cohort", y = feature_label) +
     theme_minimal(base_size = 12) +
     theme(
@@ -1585,8 +1589,8 @@ celltype_proportion <- function(cohort_info, sc_meta) {
     "NK_cells" = "#fdae61",
     "Plasma_cells" = "#e66101"
   )
-  # Set the order of the cohort factor levels
-  cell_proportions$cohort <- factor(cell_proportions$cohort, levels = c("Cohort2", "Cohort1"))
+  cohort_levels <- rev(unique(as.character(cell_proportions$cohort)))
+  cell_proportions$cohort <- factor(cell_proportions$cohort, levels = cohort_levels)
   # Reverse the order of factors for correct stacking
   cell_proportions$celltypes <- factor(cell_proportions$celltypes, levels = rev(levels(factor(cell_proportions$celltypes))))
   ggplot(cell_proportions, aes(y = cohort, x = proportion, fill = celltypes)) +

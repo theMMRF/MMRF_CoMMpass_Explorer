@@ -43,6 +43,152 @@ shinyServer(function(input, output, session) {
     data
   }
 
+  .cohort_name <- function(cohort_id) {
+    default <- if (identical(cohort_id, "cohort1")) "Cohort 1" else "Cohort 2"
+    value <- input[[paste0("cohort_name_", cohort_id)]]
+    if (is.null(value) || !nzchar(trimws(value))) default else trimws(value)
+  }
+
+  .cohort_labels <- function() {
+    if (exists("cohort_metadata", inherits = TRUE) && !is.null(cohort_metadata$labels)) {
+      return(cohort_metadata$labels)
+    }
+    labels <- c(Cohort1 = .cohort_name("cohort1"), Cohort2 = .cohort_name("cohort2"))
+    if (identical(labels[["Cohort1"]], labels[["Cohort2"]])) {
+      labels[["Cohort1"]] <- paste0(labels[["Cohort1"]], " (1)")
+      labels[["Cohort2"]] <- paste0(labels[["Cohort2"]], " (2)")
+    }
+    labels
+  }
+
+  .with_display_cohort <- function(data) {
+    labels <- .cohort_labels()
+    data$cohort <- factor(labels[as.character(data$cohort)], levels = unname(labels))
+    data
+  }
+
+  .count_card <- function(num_total, num_cohort1, num_cohort2, extra = NULL) {
+    labels <- .cohort_labels()
+    extra_html <- if (is.null(extra)) "" else paste0("<br>", extra)
+    HTML(sprintf(
+      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
+     <strong>Total Samples:</strong> %d<br>
+     <span style='color: #E41A1C;'>%s:</span> %d (%.2f%%)<br>
+     <span style='color: #4DBBD5;'>%s:</span> %d (%.2f%%)%s
+   </div>",
+      num_total,
+      htmltools::htmlEscape(labels[["Cohort1"]]), num_cohort1, ifelse(num_total == 0, 0, num_cohort1 / num_total * 100),
+      htmltools::htmlEscape(labels[["Cohort2"]]), num_cohort2, ifelse(num_total == 0, 0, num_cohort2 / num_total * 100),
+      extra_html
+    ))
+  }
+
+  .fmt_values <- function(values) {
+    values <- values[!is.na(values) & nzchar(as.character(values))]
+    paste(as.character(values), collapse = ", ")
+  }
+
+  .cohort_filter_labels <- c(
+    sex = "Sex", race = "Race", genetic_ancestry = "Genetic ancestry",
+    stage = "ISS stage", risk = "IMWG risk", cyto_risk = "Cytogenetic high risk",
+    cgs_risk = "CGS risk", rna_subtype = "RNA subtype", cna_subtype = "CNA subtype",
+    triplet = "Triplet firstline", asct = "ASCT firstline", regimen = "Regimen firstline",
+    q21_gain = "1q21 gain", q21_amp = "1q21 amplification", del13q14 = "13q14 deletion",
+    del13q34 = "13q34 deletion", del17p13 = "17p13 deletion", diploidy = "Hyperdiploidy",
+    chromothripsis = "Chromothripsis", t11_14 = "t(11;14)", t4_14 = "t(4;14)",
+    maf = "MAF/MAFB", apobec = "APOBEC", tp53 = "TP53 functional copies",
+    tp53_ns = "TP53 non-synonymous mutation count"
+  )
+
+  .describe_cohort_selection <- function(cohort_id) {
+    filters <- c(
+      get_cohort_filters(input, cohort_id, "clinical"),
+      get_cohort_filters(input, cohort_id, "molecular")
+    )
+    parts <- character()
+
+    for (key in names(.cohort_filter_labels)) {
+      values <- filters[[key]]
+      if (!is.null(values) && length(values) > 0) {
+        parts <- c(parts, paste0(.cohort_filter_labels[[key]], ": ", .fmt_values(values)))
+      }
+    }
+
+    age <- filters$age
+    if (!is.null(age) && length(age) == 2) {
+      min_age <- min(clinical_data$Age, na.rm = TRUE)
+      max_age <- max(clinical_data$Age, na.rm = TRUE)
+      if (!identical(as.numeric(age), c(min_age, max_age))) {
+        parts <- c(parts, sprintf("Age: %s-%s", age[1], age[2]))
+      }
+    }
+
+    mut_rows <- if (identical(cohort_id, "cohort1")) mut_row_counter$cohort1 else mut_row_counter$cohort2
+    if (mut_rows > 0) {
+      mut_parts <- character()
+      for (i in seq_len(mut_rows)) {
+        gene <- input[[paste0("gene_mut_", i, "_", cohort_id)]]
+        state <- input[[paste0("state_mut_", i, "_", cohort_id)]]
+        logic <- input[[paste0("logic_mut_", i, "_", cohort_id)]]
+        if (!is.null(gene) && nzchar(gene) && !is.null(state) && nzchar(state)) {
+          connector <- if (!is.null(logic) && !identical(logic, "END")) paste0(" ", logic) else ""
+          mut_parts <- c(mut_parts, paste0(gene, " ", state, connector))
+        }
+      }
+      if (length(mut_parts)) parts <- c(parts, paste0("Mutation rules: ", paste(mut_parts, collapse = "; ")))
+    }
+
+    gene <- input[[paste0("gene_expr_search_", cohort_id)]]
+    if (!is.null(gene) && nzchar(gene)) {
+      expr_type <- input[[paste0("expr_threshold_type_", cohort_id)]]
+      if (identical(expr_type, "percentile")) {
+        parts <- c(parts, sprintf(
+          "Gene expression: %s percentile %s-%s",
+          gene,
+          input[[paste0("gene_expr_percentile_min_", cohort_id)]],
+          input[[paste0("gene_expr_percentile_max_", cohort_id)]]
+        ))
+      } else {
+        parts <- c(parts, sprintf(
+          "Gene expression: %s value %s-%s",
+          gene,
+          input[[paste0("gene_expr_min_", cohort_id)]],
+          input[[paste0("gene_expr_max_", cohort_id)]]
+        ))
+      }
+    }
+
+    if (isTRUE(input[[paste0("enable_survival_filter_", cohort_id)]])) {
+      surv_var <- input[[paste0("surv_variable_", cohort_id)]]
+      stype <- input[[paste0("surv_threshold_type_", cohort_id)]]
+      event_text <- if (isTRUE(input[[paste0("require_surv_event_", cohort_id)]])) ", event = 1" else ""
+      if (identical(stype, "percentile")) {
+        parts <- c(parts, sprintf(
+          "Survival: %s percentile %s-%s%s",
+          surv_var,
+          input[[paste0("surv_threshold_min_percentile_", cohort_id)]],
+          input[[paste0("surv_threshold_max_percentile_", cohort_id)]],
+          event_text
+        ))
+      } else {
+        parts <- c(parts, sprintf(
+          "Survival: %s days %s-%s%s",
+          surv_var,
+          input[[paste0("surv_threshold_min_value_", cohort_id)]],
+          input[[paste0("surv_threshold_max_value_", cohort_id)]],
+          event_text
+        ))
+      }
+    }
+
+    loaded_n <- if (identical(cohort_id, "cohort1")) length(user_cohorts$c1_tsb) else length(user_cohorts$c2_tsb)
+    if (loaded_n > 0) {
+      parts <- c(parts, sprintf("Uploaded cohort constraint: %d matched IDs", loaded_n))
+    }
+
+    if (!length(parts)) "All eligible samples; no cohort-specific filters were applied." else paste(parts, collapse = "; ")
+  }
+
   tour_stage <- reactiveVal("idle")
 
   observeEvent(input$start_tour, {
@@ -121,6 +267,12 @@ shinyServer(function(input, output, session) {
     c1_public = character(), c2_public = character(),
     c1_tsb = character(), c2_tsb = character(),
     c1_unmatched = character(), c2_unmatched = character()
+  )
+
+  cohort_metadata <- reactiveValues(
+    labels = c(Cohort1 = "Cohort 1", Cohort2 = "Cohort 2"),
+    desc1 = "All eligible samples; no cohort-specific filters were applied.",
+    desc2 = "All eligible samples; no cohort-specific filters were applied."
   )
 
   # Load Cohort 1
@@ -661,11 +813,13 @@ shinyServer(function(input, output, session) {
     cohort1 = {
       data_cohort1 <- clinical_data
       data_cohort1$cohort <- "Cohort1"
+      data_cohort1$cohort_label <- "Cohort 1"
       data_cohort1
     },
     cohort2 = {
       data_cohort2 <- clinical_data
       data_cohort2$cohort <- "Cohort2"
+      data_cohort2$cohort_label <- "Cohort 2"
       data_cohort2
     },
     cohort1_maf = maf_data,
@@ -673,8 +827,10 @@ shinyServer(function(input, output, session) {
     combined = {
       data_cohort1 <- clinical_data
       data_cohort1$cohort <- "Cohort1"
+      data_cohort1$cohort_label <- "Cohort 1"
       data_cohort2 <- clinical_data
       data_cohort2$cohort <- "Cohort2"
+      data_cohort2$cohort_label <- "Cohort 2"
       rbind(data_cohort1, data_cohort2)
     }
   )
@@ -683,8 +839,19 @@ shinyServer(function(input, output, session) {
     data_cohort1 <- filtered_data_cohort1()
     data_cohort2 <- filtered_data_cohort2()
 
+    labels <- c(Cohort1 = .cohort_name("cohort1"), Cohort2 = .cohort_name("cohort2"))
+    if (identical(labels[["Cohort1"]], labels[["Cohort2"]])) {
+      labels[["Cohort1"]] <- paste0(labels[["Cohort1"]], " (1)")
+      labels[["Cohort2"]] <- paste0(labels[["Cohort2"]], " (2)")
+    }
+    cohort_metadata$labels <- labels
+    cohort_metadata$desc1 <- .describe_cohort_selection("cohort1")
+    cohort_metadata$desc2 <- .describe_cohort_selection("cohort2")
+
     data_cohort1$cohort <- "Cohort1"
     data_cohort2$cohort <- "Cohort2"
+    data_cohort1$cohort_label <- labels[["Cohort1"]]
+    data_cohort2$cohort_label <- labels[["Cohort2"]]
 
     n1 <- names(data_cohort1)
     n2 <- names(data_cohort2)
@@ -767,16 +934,19 @@ shinyServer(function(input, output, session) {
     num_total <- nrow(clinical_data)
     num_cohort1 <- nrow(filtered_data$cohort1)
     num_cohort2 <- nrow(filtered_data$cohort2)
-    text <- sprintf(
-      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-     <strong>Total Samples:</strong> %d<br>
-     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
-   </div>",
-      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
-    )
+    .count_card(num_total, num_cohort1, num_cohort2)
+  })
 
-    HTML(text)
+  output$cohort_descriptions <- renderUI({
+    labels <- .cohort_labels()
+    HTML(sprintf(
+      "<div class='cohort-definition-card cohort-definition-card-c1'><strong>%s</strong><p>%s</p></div>
+       <div class='cohort-definition-card cohort-definition-card-c2'><strong>%s</strong><p>%s</p></div>",
+      htmltools::htmlEscape(labels[["Cohort1"]]),
+      htmltools::htmlEscape(cohort_metadata$desc1),
+      htmltools::htmlEscape(labels[["Cohort2"]]),
+      htmltools::htmlEscape(cohort_metadata$desc2)
+    ))
   })
 
   # Download filtered clinical data
@@ -796,15 +966,7 @@ shinyServer(function(input, output, session) {
     num_cohort1 <- nrow(filtered_data$cohort1_maf@clinical.data)
     num_cohort2 <- nrow(filtered_data$cohort2_maf@clinical.data)
 
-    text <- sprintf(
-      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-     <strong>Total Samples:</strong> %d<br>
-     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
-   </div>",
-      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
-    )
-    HTML(text)
+    .count_card(num_total, num_cohort1, num_cohort2)
   })
 
   # Transcriptomics
@@ -814,15 +976,7 @@ shinyServer(function(input, output, session) {
     num_total <- length(num_sample)
     num_cohort1 <- nrow(bulk_clinical[bulk_clinical$cohort == "Cohort1", ])
     num_cohort2 <- nrow(bulk_clinical[bulk_clinical$cohort == "Cohort2", ])
-    text <- sprintf(
-      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-     <strong>Total Samples:</strong> %d<br>
-     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
-   </div>",
-      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
-    )
-    HTML(text)
+    .count_card(num_total, num_cohort1, num_cohort2)
   })
 
   # scRNA-seq
@@ -832,15 +986,7 @@ shinyServer(function(input, output, session) {
     num_total <- preprocessed_sc_meta()$num_sample
     num_cohort1 <- nrow(sc_clinical[sc_clinical$cohort == "Cohort1", ])
     num_cohort2 <- nrow(sc_clinical[sc_clinical$cohort == "Cohort2", ])
-    text <- sprintf(
-      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-     <strong>Total Samples:</strong> %d<br>
-     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)
-   </div>",
-      num_total, num_cohort1, num_cohort1 / num_total * 100, num_cohort2, num_cohort2 / num_total * 100
-    )
-    HTML(text)
+    .count_card(num_total, num_cohort1, num_cohort2)
   })
 
   # Update gene choices for selectizeInput
@@ -856,11 +1002,13 @@ shinyServer(function(input, output, session) {
 
   # Summary ----------------------
   draw_summaryPlot_g1 <- function() {
-    generate_summary_plot("cohort1", filtered_data)
+    generate_summary_plot("cohort1", filtered_data) +
+      ggplot2::labs(title = .cohort_labels()[["Cohort1"]])
   }
 
   draw_summaryPlot_g2 <- function() {
-    generate_summary_plot("cohort2", filtered_data)
+    generate_summary_plot("cohort2", filtered_data) +
+      ggplot2::labs(title = .cohort_labels()[["Cohort2"]])
   }
 
   draw_survCompPlot_pfs <- function() {
@@ -870,7 +1018,8 @@ shinyServer(function(input, output, session) {
       time_col = "PFS",
       event_col = "PFS_event",
       xlab      = "Progression-Free Survival (Days)",
-      break_by  = 500
+      break_by  = 500,
+      legend_labs = unname(.cohort_labels())
     )
   }
 
@@ -881,7 +1030,8 @@ shinyServer(function(input, output, session) {
       time_col  = "OS",
       event_col = "OS_event",
       xlab      = "Overall Survival (Days)",
-      break_by  = 500
+      break_by  = 500,
+      legend_labs = unname(.cohort_labels())
     )
   }
 
@@ -892,12 +1042,13 @@ shinyServer(function(input, output, session) {
       time_col  = "ttct2line",
       event_col = "censt2line",
       xlab      = "Time to Second Line (Days)",
-      break_by  = 500
+      break_by  = 500,
+      legend_labs = unname(.cohort_labels())
     )
   }
 
   draw_clin_distribution_ggplot <- function() {
-    combined_data <- filtered_data$combined
+    combined_data <- .with_display_cohort(filtered_data$combined)
     interested_feature <- input$clin_feature
     continuous_features <- get_continuous_features()
 
@@ -978,6 +1129,9 @@ shinyServer(function(input, output, session) {
                  filtered_data$combined)
 
     df <- as.data.frame(df)  # avoid data.table class surprises
+    if ("cohort" %in% names(df)) {
+      df$cohort <- factor(.cohort_labels()[as.character(df$cohort)], levels = unname(.cohort_labels()))
+    }
 
     ep <- .cox_endpoint_map(input$cox_endpoint)
     req(ep$time %in% names(df), ep$event %in% names(df))
@@ -1264,9 +1418,10 @@ shinyServer(function(input, output, session) {
 
   draw_mafCompForestPlot <- function() {
     req(length(unique(filtered_data$combined$cohort)) == 2)
+    labels <- .cohort_labels()
 
     g1.vs.g2 <- mafCompare(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
-                           m1Name = 'Cohort 1', m2Name = 'Cohort 2', minMut = 5)
+                           m1Name = labels[["Cohort1"]], m2Name = labels[["Cohort2"]], minMut = 5)
     g1.vs.g2$results <- g1.vs.g2$results %>%
       arrange(pval)
 
@@ -1279,20 +1434,22 @@ shinyServer(function(input, output, session) {
 
   draw_mafCompOncoPlot <- function() {
     req(input$gene_search_maf)
+    labels <- .cohort_labels()
     genes <- input$gene_search_maf
     if (length(genes) > 0) {
       coOncoplot(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
-                 m1Name = 'Cohort 1', m2Name = 'Cohort 2', genes = genes, removeNonMutated = TRUE)
+                 m1Name = labels[["Cohort1"]], m2Name = labels[["Cohort2"]], genes = genes, removeNonMutated = TRUE)
     }
     invisible(NULL)
   }
 
   draw_mafCompBarPlot <- function() {
     req(input$gene_search_maf)
+    labels <- .cohort_labels()
     genes <- input$gene_search_maf
     if (length(genes) > 0) {
       coBarplot(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
-                m1Name = 'Cohort 1', m2Name = 'Cohort 2', genes = genes)
+                m1Name = labels[["Cohort1"]], m2Name = labels[["Cohort2"]], genes = genes)
     }
     invisible(NULL)
   }
@@ -1333,9 +1490,10 @@ shinyServer(function(input, output, session) {
 
   output$mafCompTable <- renderDataTable({
     req(length(unique(filtered_data$combined$cohort)) == 2)
+    labels <- .cohort_labels()
 
     g1.vs.g2 <- mafCompare(m1 = filtered_data$cohort1_maf, m2 = filtered_data$cohort2_maf,
-                           m1Name = 'Cohort 1', m2Name = 'Cohort 2', minMut = 5)
+                           m1Name = labels[["Cohort1"]], m2Name = labels[["Cohort2"]], minMut = 5)
     g1.vs.g2$results <- g1.vs.g2$results %>%
       arrange(pval)
 
@@ -1370,12 +1528,12 @@ shinyServer(function(input, output, session) {
   # BulkRNA-seq Distribution ----------
   draw_tpm_distr <- function() {
     data <- preprocessed_bulkseq_data()
-    tpm_distr_dens(data$combined_bulkseq_tpm, data$clinical_combined, data$gene_interested, "bulkRNAseq")
+    tpm_distr_dens(data$combined_bulkseq_tpm, .with_display_cohort(data$clinical_combined), data$gene_interested, "bulkRNAseq")
   }
 
   draw_tpm_distr_boxplot <- function() {
     data <- preprocessed_bulkseq_data()
-    tpm_boxplot(data$combined_bulkseq_tpm, data$clinical_combined, data$gene_interested, "bulkRNAseq")
+    tpm_boxplot(data$combined_bulkseq_tpm, .with_display_cohort(data$clinical_combined), data$gene_interested, "bulkRNAseq")
   }
 
   draw_tpm_survCompPlot <- function(cohort_selected, cohorting_method) {
@@ -1410,7 +1568,7 @@ shinyServer(function(input, output, session) {
 
     # Generate table
     distr_table <- tpm_distr_table(selected_bulkseq_tpm, gene_interested)
-    datatable(distr_table, options = list(pageLength = 10, autoWidth = TRUE))
+    datatable(distr_table, caption = htmltools::tags$caption(.cohort_labels()[["Cohort1"]]), options = list(pageLength = 10, autoWidth = TRUE))
   })
 
   output$quantile_table_cohort2 <- renderDT({
@@ -1422,7 +1580,7 @@ shinyServer(function(input, output, session) {
 
     # Generate table
     distr_table <- tpm_distr_table(selected_bulkseq_tpm, gene_interested)
-    datatable(distr_table, options = list(pageLength = 10, autoWidth = TRUE))
+    datatable(distr_table, caption = htmltools::tags$caption(.cohort_labels()[["Cohort2"]]), options = list(pageLength = 10, autoWidth = TRUE))
   })
 
   # Survival curve for TPM quantile and mean
@@ -1516,9 +1674,11 @@ shinyServer(function(input, output, session) {
   draw_ssgsea_violin <- function() {
     results <- ssgsea_data()
     req(input$selected_gene_sets)
+    labels <- .cohort_labels()
 
     plot_data <- results$long_data %>%
       dplyr::filter(GeneSet %in% input$selected_gene_sets) %>%
+      dplyr::mutate(Cohort = factor(labels[as.character(Cohort)], levels = unname(labels))) %>%
       droplevels()
 
     # Base plot
@@ -1591,19 +1751,19 @@ shinyServer(function(input, output, session) {
   # scRNA-seq ----------------------
   draw_sc_celltype_boxplot <- function() {
     preprocessed_sc_meta <- preprocessed_sc_meta()
-    cohort_info <- preprocessed_sc_meta$cohort_info
+    cohort_info <- .with_display_cohort(preprocessed_sc_meta$cohort_info)
     celltype_boxplot(cohort_info, sc_meta)
   }
 
   draw_sc_celltype_proportion <- function() {
     preprocessed_sc_meta <- preprocessed_sc_meta()
-    cohort_info <- preprocessed_sc_meta$cohort_info
+    cohort_info <- .with_display_cohort(preprocessed_sc_meta$cohort_info)
     celltype_proportion(cohort_info, sc_meta)
   }
 
   draw_sc_cellcycle_hist <- function() {
     preprocessed_sc_meta <- preprocessed_sc_meta()
-    cohort_info <- preprocessed_sc_meta$cohort_info
+    cohort_info <- .with_display_cohort(preprocessed_sc_meta$cohort_info)
     celltypes_interested <- input$celltypes_interested
     cell_cycle_hist(cohort_info, sc_meta, celltypes_interested)
   }
@@ -1656,13 +1816,13 @@ shinyServer(function(input, output, session) {
   draw_pseudo_norm_distr <- function() {
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr)
-    tpm_distr_dens(dat$pb_norm, dat$clinical, input$gene_search_pseudo_distr, "scRNAseq")
+    tpm_distr_dens(dat$pb_norm, .with_display_cohort(dat$clinical), input$gene_search_pseudo_distr, "scRNAseq")
   }
 
   draw_pseudo_norm_distr_boxplot <- function() {
     dat <- preprocessed_pseudobulk_data()
     req(input$gene_search_pseudo_distr)
-    tpm_boxplot(dat$pb_norm, dat$clinical, input$gene_search_pseudo_distr, "scRNAseq")
+    tpm_boxplot(dat$pb_norm, .with_display_cohort(dat$clinical), input$gene_search_pseudo_distr, "scRNAseq")
   }
 
   draw_pseudo_norm_survCompPlot <- function(cohort_selected, cohorting_method) {
@@ -1683,16 +1843,7 @@ shinyServer(function(input, output, session) {
     num_total  <- dat$total
     num_cohort1 <- sum(pb_clin$cohort == "Cohort1")
     num_cohort2 <- sum(pb_clin$cohort == "Cohort2")
-    HTML(sprintf(
-      "<div style='padding:10px; border: 1px solid #ccc; border-radius: 5px; background-color:#f5f5f5;'>
-     <strong>Total Samples:</strong> %d<br>
-     <span style='color: #E41A1C;'>Cohort 1:</span> %d (%.2f%%)<br>
-     <span style='color: #4DBBD5;'>Cohort 2:</span> %d (%.2f%%)<br>
-     <strong>Cell type:</strong> %s
-     </div>",
-      num_total, num_cohort1, ifelse(num_total==0, 0, num_cohort1/num_total*100),
-      num_cohort2, ifelse(num_total==0, 0, num_cohort2/num_total*100), dat$celltype
-    ))
+    .count_card(num_total, num_cohort1, num_cohort2, extra = paste0("<strong>Cell type:</strong> ", htmltools::htmlEscape(dat$celltype)))
   })
 
   # Distribution (density + histogram)
@@ -1715,7 +1866,7 @@ shinyServer(function(input, output, session) {
     pb1 <- dat$pb_tpm[, colnames(dat$pb_tpm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
 
     tab <- tpm_distr_table(pb1, input$gene_search_pseudo_distr)
-    datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
+    datatable(tab, caption = htmltools::tags$caption(.cohort_labels()[["Cohort1"]]), options = list(pageLength = 10, autoWidth = TRUE))
   })
 
   output$pseudo_quantile_table_cohort1 <- renderDT({
@@ -1724,7 +1875,7 @@ shinyServer(function(input, output, session) {
     clin1 <- dat$clinical[dat$clinical$cohort == "Cohort1", ]
     pb1   <- dat$pb_norm[, colnames(dat$pb_norm) %in% clin1$Tumor_Sample_Barcode, drop = FALSE]
     tab <- tpm_distr_table(pb1, input$gene_search_pseudo_distr)
-    datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
+    datatable(tab, caption = htmltools::tags$caption(.cohort_labels()[["Cohort1"]]), options = list(pageLength = 10, autoWidth = TRUE))
   })
 
   output$pseudo_quantile_table_cohort2 <- renderDT({
@@ -1733,7 +1884,7 @@ shinyServer(function(input, output, session) {
     clin2 <- dat$clinical[dat$clinical$cohort == "Cohort2", ]
     pb2   <- dat$pb_norm[, colnames(dat$pb_norm) %in% clin2$Tumor_Sample_Barcode, drop = FALSE]
     tab <- tpm_distr_table(pb2, input$gene_search_pseudo_distr)
-    datatable(tab, options = list(pageLength = 10, autoWidth = TRUE))
+    datatable(tab, caption = htmltools::tags$caption(.cohort_labels()[["Cohort2"]]), options = list(pageLength = 10, autoWidth = TRUE))
   })
 
   # Survival curves by expression split

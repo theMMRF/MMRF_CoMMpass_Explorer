@@ -175,6 +175,7 @@ dashboardPage(
                  column(6,
                         div(id = "cohort1_upload",
                             box(title = "Cohort 1", width = 12,
+                                textInput("cohort_name_cohort1", "Cohort name", value = "Cohort 1"),
                                 fileInput("upload_cohort1", "Upload Cohort 1 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
                                 textAreaInput("paste_cohort1", "Or paste public_ids", rows = 5, placeholder = "MMRF_1007_1\nMMRF_1013_1\n..."),
                                 actionButton("load_cohort1", "Load Cohort 1 IDs"),
@@ -188,6 +189,7 @@ dashboardPage(
                  column(6,
                         div(id = "cohort2_upload",
                             box(title = "Cohort 2", width = 12,
+                                textInput("cohort_name_cohort2", "Cohort name", value = "Cohort 2"),
                                 fileInput("upload_cohort2", "Upload Cohort 2 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
                                 textAreaInput("paste_cohort2", "Or paste public_ids", rows = 5, placeholder = "MMRF_1020_1\nMMRF_1055_1\n..."),
                                 actionButton("load_cohort2", "Load Cohort 2 IDs"),
@@ -200,10 +202,15 @@ dashboardPage(
                  )
                )
       ),
-      tabPanel("Overall Summary", value = "Overall Summary",
+              tabPanel("Overall Summary", value = "Overall Summary",
                fluidRow(
                  column(6, div(id = "counts_card", htmlOutput("clinicalNum"))),
                  column(6, align = "right", downloadButton("download_clinical", "Download Filtered Clinical Data"))
+               ),
+
+               fluidRow(
+                 box(title = "Cohort Definitions", width = 12,
+                     htmlOutput("cohort_descriptions"))
                ),
 
                fluidRow(
