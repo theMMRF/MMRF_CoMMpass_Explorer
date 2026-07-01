@@ -183,16 +183,47 @@ hr {
 }
 
 .plot-export-controls {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #e5e5e5;
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 10;
 }
 
-.plot-export-controls .form-group {
-  margin-bottom: 6px;
+.box {
+  position: relative;
 }
 
-.plot-export-controls .btn {
+.plot-export-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 4px 0;
+  color: #771544;
+  background: #fff;
+  border-color: #d8c6d0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.plot-export-toggle:hover,
+.plot-export-toggle:focus {
+  color: #fff;
+  background: #771544;
+  border-color: #5e1034;
+}
+
+.plot-export-menu {
+  width: 230px;
+  padding: 0;
+}
+
+.plot-export-menu-body {
+  padding: 10px;
+}
+
+.plot-export-menu-body .form-group {
+  margin-bottom: 8px;
+}
+
+.plot-export-menu-body .btn {
   width: 100%;
 }
 

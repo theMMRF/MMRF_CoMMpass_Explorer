@@ -196,14 +196,28 @@ survival_event_column <- function(surv_var) {
 }
 
 plot_export_controls_ui <- function(id, width = 7, height = 5, units = "in") {
-  tagList(
-    div(
-      class = "plot-export-controls",
-      fluidRow(
-        column(3, numericInput(paste0(id, "_pdf_width"), "PDF width", value = width, min = 0.1, step = 0.5)),
-        column(3, numericInput(paste0(id, "_pdf_height"), "PDF height", value = height, min = 0.1, step = 0.5)),
-        column(3, selectInput(paste0(id, "_pdf_units"), "Units", choices = c("in", "cm", "mm"), selected = units)),
-        column(3, tags$label(HTML("&nbsp;")), downloadButton(paste0("download_", id, "_pdf"), "PDF"))
+  div(
+    class = "plot-export-controls dropdown",
+    tags$button(
+      type = "button",
+      class = "btn btn-default btn-xs dropdown-toggle plot-export-toggle",
+      `data-toggle` = "dropdown",
+      `aria-haspopup` = "true",
+      `aria-expanded` = "false",
+      title = "Download PDF",
+      icon("download")
+    ),
+    tags$ul(
+      class = "dropdown-menu dropdown-menu-right plot-export-menu",
+      onclick = "event.stopPropagation();",
+      tags$li(
+        tags$div(
+          class = "plot-export-menu-body",
+          numericInput(paste0(id, "_pdf_width"), "Width", value = width, min = 0.1, step = 0.5),
+          numericInput(paste0(id, "_pdf_height"), "Height", value = height, min = 0.1, step = 0.5),
+          selectInput(paste0(id, "_pdf_units"), "Units", choices = c("in", "cm", "mm"), selected = units),
+          downloadButton(paste0("download_", id, "_pdf"), "Download PDF", class = "btn-primary btn-block")
+        )
       )
     )
   )

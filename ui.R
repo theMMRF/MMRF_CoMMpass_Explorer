@@ -165,6 +165,7 @@ dashboardPage(
                fluidRow(
                  box(title = "How it works", width = 12, id = "how_it_works",
                      HTML("<ul style='margin-bottom:0'>
+             <li>Edit to customize each of your cohort name.</li>
              <li>Upload a CSV/TXT <em>or</em> paste <code>public_id</code>s (e.g., <code>MMRF_1013_1</code>), one per line or comma-separated.</li>
              <li>Click <strong>Load</strong> for each cohort.</li>
              <li>Click <strong>Apply Filters</strong> on the left menu to enable your loaded cohorts.</li>
