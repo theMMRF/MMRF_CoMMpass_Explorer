@@ -170,6 +170,7 @@ dashboardPage(
              <li>Upload a CSV/TXT <em>or</em> paste <code>public_id</code>s (e.g., <code>MMRF_1013_1</code>), one per line or comma-separated.</li>
              <li>Click <strong>Load</strong> for each cohort.</li>
              <li>Use <strong>Clear loaded IDs</strong> to remove an uploaded-ID constraint.</li>
+             <li>Use complement mode to define one cohort as all samples not selected by the other cohort.</li>
              <li>Click <strong>Apply Filters</strong> on the left menu to enable your loaded cohorts.</li>
              </ul>")
                  )
@@ -212,6 +213,24 @@ dashboardPage(
                                 DTOutput("cohort2_preview")
                             )
                         )
+                 )
+               ),
+               fluidRow(
+                 box(title = "Complement Cohorts", width = 12,
+                     panel_help_ui("cohort_complement"),
+                     radioButtons(
+                       "complement_mode",
+                       "Complement mode",
+                       choices = c(
+                         "None" = "none",
+                         "Make Cohort 1 the complement of Cohort 2" = "cohort1",
+                         "Make Cohort 2 the complement of Cohort 1" = "cohort2"
+                       ),
+                       selected = "none"
+                     ),
+                     tags$small(
+                       "Complement mode is applied when you click Apply Filters. The complement cohort ignores its own filters and uploaded IDs."
+                     )
                  )
                )
       ),

@@ -744,51 +744,115 @@ shinyServer(function(input, output, session) {
     shinyjs::reset("cohort2_filters")
   })
 
-  cohort1_filters <- reactive({
+  .cohort_filters <- function(cohort_id) {
     c(
-      get_cohort_filters(input, "cohort1", "clinical"),
-      get_cohort_filters(input, "cohort1", "molecular"),
-      get_cohort_filters(input, "cohort1", "gene")
+      get_cohort_filters(input, cohort_id, "clinical"),
+      get_cohort_filters(input, cohort_id, "molecular"),
+      get_cohort_filters(input, cohort_id, "gene")
     )
-  })
+  }
 
-
-  filtered_data_cohort1 <- eventReactive(input$apply_filters, {
-    clinical_filtered <- filter_cohort_data(copy(clinical_data), cohort1_filters())
-    allowed <- if (exists("user_cohorts") && length(user_cohorts$c1_tsb)) user_cohorts$c1_tsb else clinical_filtered$Tumor_Sample_Barcode
-    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% allowed, ]
+  .resolve_base_cohort <- function(cohort_id) {
+    cohort_label <- if (identical(cohort_id, "cohort1")) "Cohort 1" else "Cohort 2"
+    clinical_filtered <- filter_cohort_data(copy(clinical_data), .cohort_filters(cohort_id))
+    allowed <- if (identical(cohort_id, "cohort1")) {
+      user_cohorts$c1_tsb
+    } else {
+      user_cohorts$c2_tsb
+    }
+    if (length(allowed)) {
+      clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% allowed, ]
+    }
 
     clinical_error <- copy(clinical_filtered)
 
     # Gene mutation filter
-    mutated_ids_cohort1 <- get_mutation_filtered_ids(isolate(input), "cohort1", mut_row_counter$cohort1)
-    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% mutated_ids_cohort1, ]
+    mut_rows <- if (identical(cohort_id, "cohort1")) mut_row_counter$cohort1 else mut_row_counter$cohort2
+    mutated_ids <- get_mutation_filtered_ids(isolate(input), cohort_id, mut_rows)
+    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% mutated_ids, ]
 
     # Gene expression filter
     clinical_filtered <- filter_by_gene_expression(
       clinical_data = clinical_filtered,
-      gene = isolate(input$gene_expr_search_cohort1),
-      threshold_type = isolate(input$expr_threshold_type_cohort1),
-      min_value = isolate(input$gene_expr_min_cohort1),
-      max_value = isolate(input$gene_expr_max_cohort1),
-      min_percentile = isolate(input$gene_expr_percentile_min_cohort1),
-      max_percentile = isolate(input$gene_expr_percentile_max_cohort1)
+      gene = isolate(input[[paste0("gene_expr_search_", cohort_id)]]),
+      threshold_type = isolate(input[[paste0("expr_threshold_type_", cohort_id)]]),
+      min_value = isolate(input[[paste0("gene_expr_min_", cohort_id)]]),
+      max_value = isolate(input[[paste0("gene_expr_max_", cohort_id)]]),
+      min_percentile = isolate(input[[paste0("gene_expr_percentile_min_", cohort_id)]]),
+      max_percentile = isolate(input[[paste0("gene_expr_percentile_max_", cohort_id)]])
     )
 
     # Survival filter
     clinical_filtered <- .filter_survival_for_cohort(
       clinical_filtered,
-      "cohort1",
+      cohort_id,
       read_input = function(id) isolate(input[[id]])
     )
 
     if (nrow(clinical_filtered) == 0) {
-      showNotification("No patients in Cohort 1 match the filters.", type = "error")
+      showNotification(sprintf("No patients in %s match the filters.", cohort_label), type = "error")
       return(clinical_error)
     }
 
     return(clinical_filtered)
-  })
+  }
+
+  .complement_of <- function(other_cohort_data) {
+    other_ids <- unique(other_cohort_data$Tumor_Sample_Barcode)
+    copy(clinical_data[!(clinical_data$Tumor_Sample_Barcode %in% other_ids), ])
+  }
+
+  .empty_maf_subset <- function(patient_ids) {
+    empty_maf <- maf_data
+    empty_maf@data <- data.table::copy(maf_data@data[0, ])
+    empty_maf@variants.per.sample <- data.table::copy(maf_data@variants.per.sample[0, ])
+    empty_maf@variant.type.summary <- data.table::copy(maf_data@variant.type.summary[0, ])
+    empty_maf@variant.classification.summary <- data.table::copy(maf_data@variant.classification.summary[0, ])
+    empty_maf@gene.summary <- data.table::copy(maf_data@gene.summary[0, ])
+    empty_maf@summary <- data.table::copy(maf_data@summary[0, ])
+    empty_maf@maf.silent <- data.table::copy(maf_data@maf.silent[0, ])
+    empty_maf@clinical.data <- data.table::copy(
+      maf_data@clinical.data[Tumor_Sample_Barcode %in% patient_ids, ]
+    )
+    empty_maf
+  }
+
+  .safe_subset_maf <- function(patient_ids, cohort_label) {
+    tryCatch(
+      subsetMaf(maf = maf_data, tsb = patient_ids),
+      error = function(e) {
+        showNotification(
+          sprintf("%s has no MAF variants after filtering; mutational plots may be empty.", cohort_label),
+          type = "warning"
+        )
+        .empty_maf_subset(patient_ids)
+      }
+    )
+  }
+
+  .resolve_applied_cohorts <- function() {
+    complement_mode <- isolate(input$complement_mode)
+    if (is.null(complement_mode) || !complement_mode %in% c("none", "cohort1", "cohort2")) {
+      complement_mode <- "none"
+    }
+
+    if (identical(complement_mode, "cohort1")) {
+      base_cohort2 <- .resolve_base_cohort("cohort2")
+      base_cohort1 <- .complement_of(base_cohort2)
+    } else if (identical(complement_mode, "cohort2")) {
+      base_cohort1 <- .resolve_base_cohort("cohort1")
+      base_cohort2 <- .complement_of(base_cohort1)
+    } else {
+      base_cohort1 <- .resolve_base_cohort("cohort1")
+      base_cohort2 <- .resolve_base_cohort("cohort2")
+    }
+
+    list(
+      cohort1 = base_cohort1,
+      cohort2 = base_cohort2,
+      complement_mode = complement_mode
+    )
+  }
 
 
   # Cohort 2
@@ -797,52 +861,6 @@ shinyServer(function(input, output, session) {
     max_age <- max(clinical_data$Age, na.rm = TRUE)
     sliderInput("age_cohort2", "Age", min = min_age, max = max_age, value = c(min_age, max_age))
   })
-
-  cohort2_filters <- reactive({
-    c(
-      get_cohort_filters(input, "cohort2", "clinical"),
-      get_cohort_filters(input, "cohort2", "molecular"),
-      get_cohort_filters(input, "cohort2", "gene")
-    )
-  })
-
-  filtered_data_cohort2 <- eventReactive(input$apply_filters, {
-    clinical_filtered <- filter_cohort_data(copy(clinical_data), cohort2_filters())
-    allowed <- if (exists("user_cohorts") && length(user_cohorts$c2_tsb)) user_cohorts$c2_tsb else clinical_filtered$Tumor_Sample_Barcode
-    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% allowed, ]
-
-    clinical_error <- copy(clinical_filtered)
-
-    # Gene mutation filter
-    mutated_ids_cohort2 <- get_mutation_filtered_ids(isolate(input), "cohort2", mut_row_counter$cohort2)
-    clinical_filtered <- clinical_filtered[clinical_filtered$Tumor_Sample_Barcode %in% mutated_ids_cohort2, ]
-
-    # Gene expression filter
-    clinical_filtered <- filter_by_gene_expression(
-      clinical_data = clinical_filtered,
-      gene = isolate(input$gene_expr_search_cohort2),
-      threshold_type = isolate(input$expr_threshold_type_cohort2),
-      min_value = isolate(input$gene_expr_min_cohort2),
-      max_value = isolate(input$gene_expr_max_cohort2),
-      min_percentile = isolate(input$gene_expr_percentile_min_cohort2),
-      max_percentile = isolate(input$gene_expr_percentile_max_cohort2)
-    )
-
-    # Survival filter
-    clinical_filtered <- .filter_survival_for_cohort(
-      clinical_filtered,
-      "cohort2",
-      read_input = function(id) isolate(input[[id]])
-    )
-
-    if (nrow(clinical_filtered) == 0) {
-      showNotification("No patients in Cohort 2 match the filters.", type = "error")
-      return(clinical_error)
-    }
-
-    return(clinical_filtered)
-  })
-
 
   # filtered_data that stores combined clinical data and cohort1, cohort2 data
   filtered_data <- reactiveValues(
@@ -872,8 +890,22 @@ shinyServer(function(input, output, session) {
   )
 
   observeEvent(input$apply_filters, {
-    data_cohort1 <- filtered_data_cohort1()
-    data_cohort2 <- filtered_data_cohort2()
+    applied_cohorts <- .resolve_applied_cohorts()
+    data_cohort1 <- applied_cohorts$cohort1
+    data_cohort2 <- applied_cohorts$cohort2
+    complement_mode <- applied_cohorts$complement_mode
+
+    if (nrow(data_cohort1) == 0 || nrow(data_cohort2) == 0) {
+      empty_names <- c(
+        if (nrow(data_cohort1) == 0) "Cohort 1",
+        if (nrow(data_cohort2) == 0) "Cohort 2"
+      )
+      showNotification(
+        sprintf("Cannot apply filters because %s would be empty.", paste(empty_names, collapse = " and ")),
+        type = "error"
+      )
+      return()
+    }
 
     labels <- c(Cohort1 = .cohort_name("cohort1"), Cohort2 = .cohort_name("cohort2"))
     if (identical(labels[["Cohort1"]], labels[["Cohort2"]])) {
@@ -881,8 +913,26 @@ shinyServer(function(input, output, session) {
       labels[["Cohort2"]] <- paste0(labels[["Cohort2"]], " (2)")
     }
     cohort_metadata$labels <- labels
-    cohort_metadata$desc1 <- .describe_cohort_selection("cohort1")
-    cohort_metadata$desc2 <- .describe_cohort_selection("cohort2")
+    cohort_metadata$desc1 <- if (identical(complement_mode, "cohort1")) {
+      sprintf(
+        "Complement of %s: all eligible samples not selected for %s after its filters/uploads (%d samples). Own filters/uploads are ignored in this mode.",
+        labels[["Cohort2"]],
+        labels[["Cohort2"]],
+        nrow(data_cohort1)
+      )
+    } else {
+      .describe_cohort_selection("cohort1")
+    }
+    cohort_metadata$desc2 <- if (identical(complement_mode, "cohort2")) {
+      sprintf(
+        "Complement of %s: all eligible samples not selected for %s after its filters/uploads (%d samples). Own filters/uploads are ignored in this mode.",
+        labels[["Cohort1"]],
+        labels[["Cohort1"]],
+        nrow(data_cohort2)
+      )
+    } else {
+      .describe_cohort_selection("cohort2")
+    }
 
     data_cohort1$cohort <- "Cohort1"
     data_cohort2$cohort <- "Cohort2"
@@ -911,8 +961,8 @@ shinyServer(function(input, output, session) {
 
     patient_ids_cohort1 <- data_cohort1$Tumor_Sample_Barcode
     patient_ids_cohort2 <- data_cohort2$Tumor_Sample_Barcode
-    filtered_data$cohort1_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_cohort1)
-    filtered_data$cohort2_maf <- subsetMaf(maf = maf_data, tsb = patient_ids_cohort2)
+    filtered_data$cohort1_maf <- .safe_subset_maf(patient_ids_cohort1, labels[["Cohort1"]])
+    filtered_data$cohort2_maf <- .safe_subset_maf(patient_ids_cohort2, labels[["Cohort2"]])
   })
 
   # Reactive expression for preprocessed bulk RNA-seq data

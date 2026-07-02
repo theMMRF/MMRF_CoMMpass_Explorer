@@ -200,6 +200,7 @@ survival_event_column <- function(surv_var) {
     # how_it_works = "Load optional public ID lists, name cohorts, then apply sidebar filters to define analysis groups.",
     cohort1_upload = "Name this cohort, load optional public IDs, or clear loaded IDs to remove that constraint.",
     cohort2_upload = "Name this cohort, load optional public IDs, or clear loaded IDs to remove that constraint.",
+    cohort_complement = "Optionally define one cohort as all eligible samples not selected by the other cohort.",
     cohort_definitions = "Shows cohort names and filter rules captured the last time filters were applied.",
     summaryPlot_g1 = "Summarizes demographics and key clinical features for this cohort. Use counts to check cohort composition.",
     summaryPlot_g2 = "Summarizes demographics and key clinical features for this cohort. Use counts to check cohort composition.",
@@ -531,14 +532,31 @@ get_cohort_selected <- function(filtered_data, cohort_selected) {
 }
 
 # Summary of clinical data
+.empty_plot_message <- function(message) {
+  ggplot() +
+    annotate("text", x = 0, y = 0, label = message, size = 4) +
+    theme_void()
+}
+
 generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
   features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class",
                 "CGS_risk", "ASCT_First", "Triplet_First", "Hyperdiploidy", "chromothripsis")
 
+  if (is.null(selected_data) || nrow(selected_data) == 0) {
+    return(.empty_plot_message("No samples available for this cohort."))
+  }
+
   unique_values_counts_list <- lapply(features, function(feature) {
-    data.frame(Value = names(table(selected_data[[feature]])),
-               Count = as.integer(table(selected_data[[feature]])),
+    if (!feature %in% names(selected_data)) {
+      return(data.frame(Value = "No data", Count = 0L, Feature = feature))
+    }
+    tbl <- table(selected_data[[feature]], useNA = "no")
+    if (length(tbl) == 0) {
+      return(data.frame(Value = "No data", Count = 0L, Feature = feature))
+    }
+    data.frame(Value = names(tbl),
+               Count = as.integer(tbl),
                Feature = feature)
   })
 
@@ -955,6 +973,15 @@ plot_cohort_survival <- function(data,
                                  break_by = 500,
                                  legend_labs = c("Cohort1", "Cohort2")) {
   stopifnot(all(c("cohort", time_col, event_col) %in% names(data)))
+  data <- data[!is.na(data[[time_col]]) & !is.na(data[[event_col]]), ]
+  if (nrow(data) == 0 || length(unique(data$cohort)) < 2) {
+    return(.empty_plot_message("Not enough survival data for this comparison."))
+  }
+
+  group_counts <- table(data$cohort)
+  show_interval <- all(group_counts >= 2)
+  show_pval <- all(group_counts >= 2)
+
   surv_obj <- survival::Surv(time = data[[time_col]],
                              event = data[[event_col]])
 
@@ -971,8 +998,8 @@ plot_cohort_survival <- function(data,
     linetype = c("solid", "solid"),
     size = 1,
 
-    conf.int = TRUE,
-    pval = TRUE,
+    conf.int = show_interval,
+    pval = show_pval,
     pval.coord = c(pval_x, 0.1),
 
     title = "",
