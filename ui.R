@@ -164,11 +164,12 @@ dashboardPage(
       tabPanel("Upload Cohorts", value = "Custom Cohorts",
                fluidRow(
                  box(title = "How it works", width = 12, id = "how_it_works",
-                     panel_help_ui("how_it_works"),
+                     # panel_help_ui("how_it_works"),
                      HTML("<ul style='margin-bottom:0'>
              <li>Edit to customize each of your cohort name.</li>
              <li>Upload a CSV/TXT <em>or</em> paste <code>public_id</code>s (e.g., <code>MMRF_1013_1</code>), one per line or comma-separated.</li>
              <li>Click <strong>Load</strong> for each cohort.</li>
+             <li>Use <strong>Clear loaded IDs</strong> to remove an uploaded-ID constraint.</li>
              <li>Click <strong>Apply Filters</strong> on the left menu to enable your loaded cohorts.</li>
              </ul>")
                  )
@@ -181,7 +182,11 @@ dashboardPage(
                                 textInput("cohort_name_cohort1", "Cohort name", value = "Cohort 1"),
                                 fileInput("upload_cohort1", "Upload Cohort 1 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
                                 textAreaInput("paste_cohort1", "Or paste public_ids", rows = 5, placeholder = "MMRF_1007_1\nMMRF_1013_1\n..."),
-                                actionButton("load_cohort1", "Load Cohort 1 IDs"),
+                                div(
+                                  class = "upload-cohort-actions",
+                                  actionButton("load_cohort1", "Load Cohort 1 IDs"),
+                                  actionButton("clear_loaded_cohort1", "Clear loaded IDs", icon = icon("times"))
+                                ),
                                 downloadButton("download_unmatched_c1", "Download unmatched IDs"),
                                 tags$hr(),
                                 verbatimTextOutput("cohort1_status"),
@@ -196,7 +201,11 @@ dashboardPage(
                                 textInput("cohort_name_cohort2", "Cohort name", value = "Cohort 2"),
                                 fileInput("upload_cohort2", "Upload Cohort 2 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
                                 textAreaInput("paste_cohort2", "Or paste public_ids", rows = 5, placeholder = "MMRF_1020_1\nMMRF_1055_1\n..."),
-                                actionButton("load_cohort2", "Load Cohort 2 IDs"),
+                                div(
+                                  class = "upload-cohort-actions",
+                                  actionButton("load_cohort2", "Load Cohort 2 IDs"),
+                                  actionButton("clear_loaded_cohort2", "Clear loaded IDs", icon = icon("times"))
+                                ),
                                 downloadButton("download_unmatched_c2", "Download unmatched IDs"),
                                 tags$hr(),
                                 verbatimTextOutput("cohort2_status"),

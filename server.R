@@ -269,6 +269,22 @@ shinyServer(function(input, output, session) {
     c1_unmatched = character(), c2_unmatched = character()
   )
 
+  .has_loaded_cohort_ids <- function(cohort_num) {
+    if (identical(cohort_num, 1L)) {
+      return(length(user_cohorts$c1_public) > 0 ||
+               length(user_cohorts$c1_tsb) > 0 ||
+               length(user_cohorts$c1_unmatched) > 0)
+    }
+    length(user_cohorts$c2_public) > 0 ||
+      length(user_cohorts$c2_tsb) > 0 ||
+      length(user_cohorts$c2_unmatched) > 0
+  }
+
+  observe({
+    toggleState("clear_loaded_cohort1", condition = .has_loaded_cohort_ids(1L))
+    toggleState("clear_loaded_cohort2", condition = .has_loaded_cohort_ids(2L))
+  })
+
   cohort_metadata <- reactiveValues(
     labels = c(Cohort1 = "Cohort 1", Cohort2 = "Cohort 2"),
     desc1 = "All eligible samples; no cohort-specific filters were applied.",
@@ -287,6 +303,13 @@ shinyServer(function(input, output, session) {
     if (length(map$unmatched)) showNotification(sprintf("%d Cohort 1 IDs were unmatched", length(map$unmatched)), type = "warning")
   })
 
+  observeEvent(input$clear_loaded_cohort1, {
+    user_cohorts$c1_public <- character()
+    user_cohorts$c1_tsb <- character()
+    user_cohorts$c1_unmatched <- character()
+    showNotification("Cleared loaded Cohort 1 IDs. Click Apply Filters to refresh downstream panels.", type = "message")
+  })
+
   # Load Cohort 2
   observeEvent(input$load_cohort2, {
     ids <- unique(c(.parse_public_ids_from_file(input$upload_cohort2),
@@ -299,11 +322,24 @@ shinyServer(function(input, output, session) {
     if (length(map$unmatched)) showNotification(sprintf("%d Cohort 2 IDs were unmatched", length(map$unmatched)), type = "warning")
   })
 
+  observeEvent(input$clear_loaded_cohort2, {
+    user_cohorts$c2_public <- character()
+    user_cohorts$c2_tsb <- character()
+    user_cohorts$c2_unmatched <- character()
+    showNotification("Cleared loaded Cohort 2 IDs. Click Apply Filters to refresh downstream panels.", type = "message")
+  })
+
   # Status + previews
   output$cohort1_status <- renderText({
+    if (!.has_loaded_cohort_ids(1L)) {
+      return("No uploaded ID constraint active.")
+    }
     sprintf("Matched: %d  |  Unmatched: %d", length(user_cohorts$c1_tsb), length(user_cohorts$c1_unmatched))
   })
   output$cohort2_status <- renderText({
+    if (!.has_loaded_cohort_ids(2L)) {
+      return("No uploaded ID constraint active.")
+    }
     sprintf("Matched: %d  |  Unmatched: %d", length(user_cohorts$c2_tsb), length(user_cohorts$c2_unmatched))
   })
 

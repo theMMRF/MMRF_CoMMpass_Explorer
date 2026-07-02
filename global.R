@@ -197,9 +197,9 @@ survival_event_column <- function(surv_var) {
 
 .panel_help_text <- function(id) {
   help_text <- c(
-    how_it_works = "Load optional public ID lists, name cohorts, then apply sidebar filters to define analysis groups.",
-    cohort1_upload = "Name this cohort and optionally restrict it to uploaded or pasted public IDs before applying filters.",
-    cohort2_upload = "Name this cohort and optionally restrict it to uploaded or pasted public IDs before applying filters.",
+    # how_it_works = "Load optional public ID lists, name cohorts, then apply sidebar filters to define analysis groups.",
+    cohort1_upload = "Name this cohort, load optional public IDs, or clear loaded IDs to remove that constraint.",
+    cohort2_upload = "Name this cohort, load optional public IDs, or clear loaded IDs to remove that constraint.",
     cohort_definitions = "Shows cohort names and filter rules captured the last time filters were applied.",
     summaryPlot_g1 = "Summarizes demographics and key clinical features for this cohort. Use counts to check cohort composition.",
     summaryPlot_g2 = "Summarizes demographics and key clinical features for this cohort. Use counts to check cohort composition.",

@@ -277,6 +277,13 @@ hr {
   width: 100%;
 }
 
+.upload-cohort-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 .cohort-definition-card {
   padding: 10px 12px;
   margin-bottom: 8px;
