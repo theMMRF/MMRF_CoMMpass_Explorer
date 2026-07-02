@@ -33,6 +33,22 @@ clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
   if (is.na(n)) 0L else as.integer(n)
 }
 
+.sanitize_percentile_range <- function(min_percentile, max_percentile) {
+  min_percentile <- suppressWarnings(as.numeric(min_percentile))
+  max_percentile <- suppressWarnings(as.numeric(max_percentile))
+  if (!is.finite(min_percentile) || !is.finite(max_percentile)) return(NULL)
+
+  min_percentile <- max(0, min(100, min_percentile))
+  max_percentile <- max(0, min(100, max_percentile))
+  if (min_percentile > max_percentile) {
+    tmp <- min_percentile
+    min_percentile <- max_percentile
+    max_percentile <- tmp
+  }
+
+  list(min = min_percentile, max = max_percentile)
+}
+
 # ---- user's cohort helpers ----------------------------------------------------
 .parse_public_ids_from_file <- function(file_input) {
   if (is.null(file_input)) return(character())
@@ -150,8 +166,10 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
     keep_ids <- names(gene_expr)[gene_expr >= min_value & gene_expr <= max_value]
   } else {
     # Percentile range logic
-    lower_cutoff <- quantile(gene_expr, probs = min_percentile / 100, na.rm = TRUE)
-    upper_cutoff <- quantile(gene_expr, probs = max_percentile / 100, na.rm = TRUE)
+    pct <- .sanitize_percentile_range(min_percentile, max_percentile)
+    if (is.null(pct)) return(clinical_data)
+    lower_cutoff <- quantile(gene_expr, probs = pct$min / 100, na.rm = TRUE)
+    upper_cutoff <- quantile(gene_expr, probs = pct$max / 100, na.rm = TRUE)
     keep_ids <- names(gene_expr)[gene_expr >= lower_cutoff & gene_expr <= upper_cutoff]
   }
 
@@ -170,8 +188,10 @@ filter_by_survival <- function(clinical_data, surv_var, threshold_type,
   if (threshold_type == "percentile") {
     if (is.null(min_percentile) || is.null(max_percentile) ||
         is.na(min_percentile) || is.na(max_percentile)) return(clinical_data)
-    min_thresh <- quantile(surv_data, probs = min_percentile / 100, na.rm = TRUE)
-    max_thresh <- quantile(surv_data, probs = max_percentile / 100, na.rm = TRUE)
+    pct <- .sanitize_percentile_range(min_percentile, max_percentile)
+    if (is.null(pct)) return(clinical_data)
+    min_thresh <- quantile(surv_data, probs = pct$min / 100, na.rm = TRUE)
+    max_thresh <- quantile(surv_data, probs = pct$max / 100, na.rm = TRUE)
   } else {
     if (is.null(min_value) || is.null(max_value) || is.na(min_value) || is.na(max_value)) return(clinical_data)
     min_thresh <- min_value

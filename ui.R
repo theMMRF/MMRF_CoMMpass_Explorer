@@ -34,9 +34,10 @@ dashboardPage(
                                 radioButtons("expr_threshold_type_cohort1", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
                                 conditionalPanel(
                                   condition = "input.expr_threshold_type_cohort1 == 'percentile'",
-                                  fluidRow(
-                                    column(6, numericInput("gene_expr_percentile_min_cohort1", "Min Percentile", value = 0, min = 0, max = 100)),
-                                    column(6, numericInput("gene_expr_percentile_max_cohort1", "Max Percentile", value = 100, min = 0, max = 100))
+                                  div(
+                                    class = "expression-threshold-inputs",
+                                    numericInput("gene_expr_percentile_min_cohort1", "Min Percentile", value = 0, min = 0, max = 100, width = "100%"),
+                                    numericInput("gene_expr_percentile_max_cohort1", "Max Percentile", value = 100, min = 0, max = 100, width = "100%")
                                   )
                                 ),
                                 conditionalPanel(
@@ -64,16 +65,18 @@ dashboardPage(
 
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort1 == 'value'",
-                                    fluidRow(
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_value_cohort1", "Min Days", value = NULL))),
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_value_cohort1", "Max Days", value = NULL)))
+                                    div(
+                                      class = "survival-threshold-inputs",
+                                      numericInput("surv_threshold_min_value_cohort1", "Min Days", value = NULL, width = "100%"),
+                                      numericInput("surv_threshold_max_value_cohort1", "Max Days", value = NULL, width = "100%")
                                     )
                                   ),
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort1 == 'percentile'",
-                                    fluidRow(
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_percentile_cohort1", "Min Percentile", value = 0, min = 0, max = 100))),
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_percentile_cohort1", "Max Percentile", value = 100, min = 0, max = 100)))
+                                    div(
+                                      class = "survival-threshold-inputs",
+                                      numericInput("surv_threshold_min_percentile_cohort1", "Min Percentile", value = 0, min = 0, max = 100, width = "100%"),
+                                      numericInput("surv_threshold_max_percentile_cohort1", "Max Percentile", value = 100, min = 0, max = 100, width = "100%")
                                     )
                                   )
                                 )
@@ -99,9 +102,10 @@ dashboardPage(
                                 radioButtons("expr_threshold_type_cohort2", "Threshold Type", choices = c("value", "percentile"), selected = "percentile"),
                                 conditionalPanel(
                                   condition = "input.expr_threshold_type_cohort2 == 'percentile'",
-                                  fluidRow(
-                                    column(6, numericInput("gene_expr_percentile_min_cohort2", "Min Percentile", value = 0, min = 0, max = 100)),
-                                    column(6, numericInput("gene_expr_percentile_max_cohort2", "Max Percentile", value = 100, min = 0, max = 100))
+                                  div(
+                                    class = "expression-threshold-inputs",
+                                    numericInput("gene_expr_percentile_min_cohort2", "Min Percentile", value = 0, min = 0, max = 100, width = "100%"),
+                                    numericInput("gene_expr_percentile_max_cohort2", "Max Percentile", value = 100, min = 0, max = 100, width = "100%")
                                   )
                                 ),
                                 conditionalPanel(
@@ -128,16 +132,18 @@ dashboardPage(
 
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort2 == 'value'",
-                                    fluidRow(
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_value_cohort2", "Min Days", value = NULL))),
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_value_cohort2", "Max Days", value = NULL)))
+                                    div(
+                                      class = "survival-threshold-inputs",
+                                      numericInput("surv_threshold_min_value_cohort2", "Min Days", value = NULL, width = "100%"),
+                                      numericInput("surv_threshold_max_value_cohort2", "Max Days", value = NULL, width = "100%")
                                     )
                                   ),
                                   conditionalPanel(
                                     condition = "input.surv_threshold_type_cohort2 == 'percentile'",
-                                    fluidRow(
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_min_percentile_cohort2", "Min Percentile", value = 0, min = 0, max = 100))),
-                                      column(6, div(style = "width: 100%;", numericInput("surv_threshold_max_percentile_cohort2", "Max Percentile", value = 100, min = 0, max = 100)))
+                                    div(
+                                      class = "survival-threshold-inputs",
+                                      numericInput("surv_threshold_min_percentile_cohort2", "Min Percentile", value = 0, min = 0, max = 100, width = "100%"),
+                                      numericInput("surv_threshold_max_percentile_cohort2", "Max Percentile", value = 100, min = 0, max = 100, width = "100%")
                                     )
                                   )
                                 )

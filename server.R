@@ -67,6 +67,31 @@ shinyServer(function(input, output, session) {
     data
   }
 
+  .observe_percentile_bounds <- function(input_id) {
+    observeEvent(input[[input_id]], {
+      value <- suppressWarnings(as.numeric(input[[input_id]]))
+      if (!is.finite(value)) return()
+      bounded <- max(0, min(100, value))
+      if (!identical(value, bounded)) {
+        updateNumericInput(session, input_id, value = bounded)
+      }
+    }, ignoreNULL = TRUE)
+  }
+
+  lapply(
+    c(
+      "surv_threshold_min_percentile_cohort1",
+      "surv_threshold_max_percentile_cohort1",
+      "surv_threshold_min_percentile_cohort2",
+      "surv_threshold_max_percentile_cohort2",
+      "gene_expr_percentile_min_cohort1",
+      "gene_expr_percentile_max_cohort1",
+      "gene_expr_percentile_min_cohort2",
+      "gene_expr_percentile_max_cohort2"
+    ),
+    .observe_percentile_bounds
+  )
+
   .count_card <- function(num_total, num_cohort1, num_cohort2, extra = NULL) {
     labels <- .cohort_labels()
     extra_html <- if (is.null(extra)) "" else paste0("<br>", extra)

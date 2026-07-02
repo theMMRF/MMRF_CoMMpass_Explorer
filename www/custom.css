@@ -284,6 +284,17 @@ hr {
   margin-bottom: 8px;
 }
 
+.survival-threshold-inputs .form-group,
+.expression-threshold-inputs .form-group {
+  margin-bottom: 8px;
+}
+
+.survival-threshold-inputs input[type="number"],
+.expression-threshold-inputs input[type="number"] {
+  width: 100%;
+  min-width: 120px;
+}
+
 .cohort-definition-card {
   padding: 10px 12px;
   margin-bottom: 8px;
