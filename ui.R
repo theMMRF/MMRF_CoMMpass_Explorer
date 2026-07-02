@@ -164,6 +164,7 @@ dashboardPage(
       tabPanel("Upload Cohorts", value = "Custom Cohorts",
                fluidRow(
                  box(title = "How it works", width = 12, id = "how_it_works",
+                     panel_help_ui("how_it_works"),
                      HTML("<ul style='margin-bottom:0'>
              <li>Edit to customize each of your cohort name.</li>
              <li>Upload a CSV/TXT <em>or</em> paste <code>public_id</code>s (e.g., <code>MMRF_1013_1</code>), one per line or comma-separated.</li>
@@ -176,6 +177,7 @@ dashboardPage(
                  column(6,
                         div(id = "cohort1_upload",
                             box(title = "Cohort 1", width = 12,
+                                panel_help_ui("cohort1_upload"),
                                 textInput("cohort_name_cohort1", "Cohort name", value = "Cohort 1"),
                                 fileInput("upload_cohort1", "Upload Cohort 1 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
                                 textAreaInput("paste_cohort1", "Or paste public_ids", rows = 5, placeholder = "MMRF_1007_1\nMMRF_1013_1\n..."),
@@ -190,6 +192,7 @@ dashboardPage(
                  column(6,
                         div(id = "cohort2_upload",
                             box(title = "Cohort 2", width = 12,
+                                panel_help_ui("cohort2_upload"),
                                 textInput("cohort_name_cohort2", "Cohort name", value = "Cohort 2"),
                                 fileInput("upload_cohort2", "Upload Cohort 2 public_ids (csv/txt)", accept = c(".csv", ".txt", ".tsv")),
                                 textAreaInput("paste_cohort2", "Or paste public_ids", rows = 5, placeholder = "MMRF_1020_1\nMMRF_1055_1\n..."),
@@ -211,6 +214,7 @@ dashboardPage(
 
                fluidRow(
                  box(title = "Cohort Definitions", width = 12,
+                     panel_help_ui("cohort_definitions"),
                      htmlOutput("cohort_descriptions"))
                ),
 
@@ -253,6 +257,7 @@ dashboardPage(
                ),
                fluidRow(
                  box(title = "Clinical Feature Significance Table", width = 12,
+                     panel_help_ui("significance_table"),
                      p("Statistical comparison of clinical features between Cohort 1 and Cohort 2."),
                      p(HTML("<strong>Significance levels:</strong> *** p<0.001, ** p<0.01, * p<0.05, NS = Not Significant")),
                      DTOutput("significance_table")
@@ -262,6 +267,7 @@ dashboardPage(
                ###################### COX-PH ######################
                fluidRow(
                  box(title = "Model setup", width = 12,
+                     panel_help_ui("cox_model"),
                      fluidRow(
                        column(3,
                               radioButtons(
@@ -317,6 +323,7 @@ dashboardPage(
                ),
                fluidRow(
                  box(title = "Cox-PH Results", width = 12,
+                     panel_help_ui("cox_results"),
                      DTOutput("cox_table"),
                      downloadButton("download_cox_table", "Download HR table")
                  )
@@ -404,6 +411,7 @@ dashboardPage(
 
                fluidRow(
                  box(title = "", width = 12,
+                     panel_help_ui("mafCompTable"),
                      dataTableOutput("mafCompTable")
                  )
                ),
@@ -451,10 +459,12 @@ dashboardPage(
 
                fluidRow(
                  box(title = "", width = 6,
+                     panel_help_ui("quantile_table_cohort1"),
                      DTOutput("quantile_table_cohort1"),
                  ),
 
                  box(title = "", width = 6,
+                     panel_help_ui("quantile_table_cohort2"),
                      DTOutput("quantile_table_cohort2"),
                  )
                ),
@@ -473,6 +483,7 @@ dashboardPage(
 
                fluidRow(
                  box(title = "DEGs", width = 12,
+                     panel_help_ui("DEGs_table"),
                      DTOutput("DEGs_table"),
                      downloadButton("download_DEGs", "Download Full Table")
                  ),
@@ -486,6 +497,7 @@ dashboardPage(
                      plot_export_controls_ui("ssgsea_violin")
                  ),
                  box(title = "Gene set table", width = 12,
+                     panel_help_ui("ssgsea_table"),
                      DTOutput("ssgsea_table")
                  )
                )
@@ -565,8 +577,14 @@ dashboardPage(
                           ),
 
                           fluidRow(
-                            box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort1")),
-                            box(title = NULL, width = 6, DTOutput("pseudo_quantile_table_cohort2"))
+                            box(title = NULL, width = 6,
+                                panel_help_ui("pseudo_quantile_table_cohort1"),
+                                DTOutput("pseudo_quantile_table_cohort1")
+                            ),
+                            box(title = NULL, width = 6,
+                                panel_help_ui("pseudo_quantile_table_cohort2"),
+                                DTOutput("pseudo_quantile_table_cohort2")
+                            )
                           ),
 
                           fluidRow(
@@ -584,7 +602,10 @@ dashboardPage(
                           ),
 
                           fluidRow(
-                            box(title = "DEGs", width = 12, DTOutput("pseudo_DEGs_table")),
+                            box(title = "DEGs", width = 12,
+                                panel_help_ui("pseudo_DEGs_table"),
+                                DTOutput("pseudo_DEGs_table")
+                            ),
                             downloadButton("download_pseudo_DEGs", "Download Full Table")
                           )
                  )

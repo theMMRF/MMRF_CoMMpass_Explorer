@@ -187,13 +187,30 @@ hr {
   top: 8px;
   right: 10px;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .box {
   position: relative;
 }
 
-.plot-export-toggle {
+.panel-help-control {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 10;
+}
+
+.plot-export-controls .panel-help-control {
+  position: relative;
+  top: auto;
+  right: auto;
+}
+
+.plot-export-toggle,
+.panel-help-toggle {
   width: 28px;
   height: 28px;
   padding: 4px 0;
@@ -204,10 +221,43 @@ hr {
 }
 
 .plot-export-toggle:hover,
-.plot-export-toggle:focus {
+.plot-export-toggle:focus,
+.panel-help-toggle:hover,
+.panel-help-toggle:focus {
   color: #fff;
   background: #771544;
   border-color: #5e1034;
+}
+
+.panel-help-toggle {
+  cursor: help;
+}
+
+.panel-help-control::after {
+  content: attr(data-help);
+  display: none;
+  position: absolute;
+  top: 34px;
+  right: 0;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 40px));
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 400;
+  color: #fff;
+  white-space: normal;
+  text-align: left;
+  background: rgba(44, 44, 44, 0.95);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.panel-help-control:hover::after,
+.panel-help-control:focus-within::after {
+  display: block;
 }
 
 .plot-export-menu {

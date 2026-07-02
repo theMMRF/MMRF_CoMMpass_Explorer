@@ -195,31 +195,107 @@ survival_event_column <- function(surv_var) {
   )
 }
 
-plot_export_controls_ui <- function(id, width = 7, height = 5, units = "in") {
+.panel_help_text <- function(id) {
+  help_text <- c(
+    how_it_works = "Load optional public ID lists, name cohorts, then apply sidebar filters to define analysis groups.",
+    cohort1_upload = "Name this cohort and optionally restrict it to uploaded or pasted public IDs before applying filters.",
+    cohort2_upload = "Name this cohort and optionally restrict it to uploaded or pasted public IDs before applying filters.",
+    cohort_definitions = "Shows cohort names and filter rules captured the last time filters were applied.",
+    summaryPlot_g1 = "Summarizes demographics and key clinical features for this cohort. Use counts to check cohort composition.",
+    summaryPlot_g2 = "Summarizes demographics and key clinical features for this cohort. Use counts to check cohort composition.",
+    survCompPlot_pfs = "Progression-free survival comparison. Wider curve separation suggests different PFS between cohorts.",
+    survCompPlot_tt2Line_censored = "Time-to-second-line comparison. Curves show time until second line.",
+    survCompPlot_os = "Overall survival comparison. Wider curve separation suggests different OS between cohorts.",
+    clin_distribution = "Shows the selected clinical feature by cohort. Compare distributions before interpreting p-values.",
+    significance_table = "Tests clinical feature differences between cohorts.",
+    cox_model = "Select endpoint, cohorts, covariates, and stratification before fitting the Cox model.",
+    cox_results = "Cox model hazard ratios. HR greater than 1 means higher hazard after selected adjustments.",
+    cox_forest = "Forest plot of Cox hazard ratios.",
+    mafSummary_g1 = "Mutation summary for this cohort, including variant classes and sample-level mutation burden.",
+    mafSummary_g2 = "Mutation summary for this cohort, including variant classes and sample-level mutation burden.",
+    oncoplot_g1 = "Top mutated genes in this cohort. Columns are samples and colors mark mutation types.",
+    oncoplot_g2 = "Top mutated genes in this cohort. Columns are samples and colors mark mutation types.",
+    lollipopPlot_g1 = "Protein-position mutation plot for the selected gene. Peaks can indicate mutation hotspots.",
+    lollipopPlot_g2 = "Protein-position mutation plot for the selected gene. Peaks can indicate mutation hotspots.",
+    interactionPlot_g1 = "Gene mutation co-occurrence and exclusivity patterns. Significant pairs are non-random.",
+    interactionPlot_g2 = "Gene mutation co-occurrence and exclusivity patterns. Significant pairs are non-random.",
+    mafCompOncoPlot = "Side-by-side mutation view for selected genes across cohorts.",
+    mafCompBarPlot = "Compares selected gene mutation frequencies between cohorts.",
+    mafCompTable = "Genes with different mutation frequencies between cohorts from maftools comparison.",
+    mafCompForestPlot = "Mutation enrichment forest plot. Direction reflects relative mutation frequency between cohorts.",
+    tpm_distr = "Bulk RNA expression distribution for the selected gene by cohort.",
+    tpm_distr_boxplot = "Bulk RNA expression boxplot with cohort comparison p-value.",
+    tpm_survCompPlot_g1 = "Survival within this cohort after splitting patients by selected gene expression.",
+    tpm_survCompPlot_g2 = "Survival within this cohort after splitting patients by selected gene expression.",
+    quantile_table_cohort1 = "Expression cutoffs and sample counts for the selected gene in this cohort.",
+    quantile_table_cohort2 = "Expression cutoffs and sample counts for the selected gene in this cohort.",
+    bulkVolcano = "Bulk DESeq2 volcano plot. Far left or right points with high y-values are genes down-regulated or up-regulated in the first cohot (Cohort 1).",
+    DEGs_table = "Thresholded bulk DESeq2 results. Adjust p-value and fold-change cutoffs above.",
+    ssgsea_violin = "Gene-set enrichment scores by cohort. Higher values indicate stronger pathway activity.",
+    ssgsea_table = "Statistical table for gene-set enrichment differences between cohorts. Up means this pathway is up-regulated in the first cohort (Cohort 1), vice versa.",
+    sc_celltype_boxplot = "Patient-level cell type proportions by cohort. Stars mark differential abundance tests.",
+    sc_celltype_proportion = "Stacked cell type composition by cohort for broad immune shifts.",
+    sc_cellcycle_hist = "Cell-cycle phase distribution for selected cell types by cohort.",
+    pseudo_norm_distr = "Pseudobulk expression distribution for the selected cell type and gene.",
+    pseudo_norm_distr_boxplot = "Pseudobulk expression boxplot with cohort comparison p-value.",
+    pseudo_norm_survCompPlot_g1 = "Survival within this cohort after splitting by pseudobulk expression.",
+    pseudo_norm_survCompPlot_g2 = "Survival within this cohort after splitting by pseudobulk expression.",
+    pseudo_quantile_table_cohort1 = "Pseudobulk expression cutoffs and sample counts for this cohort.",
+    pseudo_quantile_table_cohort2 = "Pseudobulk expression cutoffs and sample counts for this cohort.",
+    pseudoVolcano = "Cell-type-specific pseudobulk DESeq2 volcano plot.",
+    pseudo_DEGs_table = "Thresholded pseudobulk differential expression results for the selected cell type."
+  )
+  text <- unname(help_text[id])
+  if (is.na(text)) {
+    "Explains the inputs or results in this panel. Use it as context for interpretation."
+  } else {
+    text
+  }
+}
+
+panel_help_ui <- function(id, text = NULL) {
+  if (is.null(text)) text <- .panel_help_text(id)
   div(
-    class = "plot-export-controls dropdown",
+    class = "panel-help-control",
+    `data-help` = text,
     tags$button(
       type = "button",
-      class = "btn btn-default btn-xs dropdown-toggle plot-export-toggle",
-      `data-toggle` = "dropdown",
-      `aria-haspopup` = "true",
-      `aria-expanded` = "false",
-      title = "Download PDF",
-      icon("download")
-    ),
-    tags$ul(
-      class = "dropdown-menu dropdown-menu-right plot-export-menu",
-      onclick = "event.stopPropagation();",
-      tags$li(
-        tags$div(
-          class = "plot-export-menu-body",
-          numericInput(paste0(id, "_pdf_width"), "Width", value = width, min = 0.1, step = 0.5),
-          numericInput(paste0(id, "_pdf_height"), "Height", value = height, min = 0.1, step = 0.5),
-          selectInput(paste0(id, "_pdf_units"), "Units", choices = c("in", "cm", "mm"), selected = units),
-          downloadButton(paste0("download_", id, "_pdf"), "Download PDF", class = "btn-primary btn-block")
+      class = "btn btn-default btn-xs panel-help-toggle",
+      `aria-label` = text,
+      icon("question-circle")
+    )
+  )
+}
+
+plot_export_controls_ui <- function(id, width = 7, height = 5, units = "in") {
+  div(
+    class = "plot-export-controls",
+    div(
+      class = "plot-export-dropdown dropdown",
+      tags$button(
+        type = "button",
+        class = "btn btn-default btn-xs dropdown-toggle plot-export-toggle",
+        `data-toggle` = "dropdown",
+        `aria-haspopup` = "true",
+        `aria-expanded` = "false",
+        title = "Download PDF",
+        icon("download")
+      ),
+      tags$ul(
+        class = "dropdown-menu dropdown-menu-right plot-export-menu",
+        onclick = "event.stopPropagation();",
+        tags$li(
+          tags$div(
+            class = "plot-export-menu-body",
+            numericInput(paste0(id, "_pdf_width"), "Width", value = width, min = 0.1, step = 0.5),
+            numericInput(paste0(id, "_pdf_height"), "Height", value = height, min = 0.1, step = 0.5),
+            selectInput(paste0(id, "_pdf_units"), "Units", choices = c("in", "cm", "mm"), selected = units),
+            downloadButton(paste0("download_", id, "_pdf"), "Download PDF", class = "btn-primary btn-block")
+          )
         )
       )
-    )
+    ),
+    panel_help_ui(id)
   )
 }
 
