@@ -235,6 +235,299 @@ survival_event_column <- function(surv_var) {
   )
 }
 
+.short_protein_change <- function(hgvsp) {
+  aa_codes <- c(
+    Ala = "A", Arg = "R", Asn = "N", Asp = "D", Cys = "C",
+    Gln = "Q", Glu = "E", Gly = "G", His = "H", Ile = "I",
+    Leu = "L", Lys = "K", Met = "M", Phe = "F", Pro = "P",
+    Ser = "S", Thr = "T", Trp = "W", Tyr = "Y", Val = "V",
+    Ter = "*", Sec = "U"
+  )
+
+  result <- sub("^.*p\\.", "", as.character(hgvsp))
+  for (code in names(aa_codes)) {
+    result <- gsub(code, aa_codes[[code]], result, fixed = TRUE)
+  }
+  result
+}
+
+.protein_position <- function(hgvsp) {
+  change <- sub("^.*p\\.", "", as.character(hgvsp))
+  has_position <- grepl("[0-9]+", change)
+  position <- rep(NA_real_, length(change))
+  position[has_position] <- suppressWarnings(as.numeric(
+    sub("^.*?([0-9]+).*$", "\\1", change[has_position])
+  ))
+  position
+}
+
+summarize_lollipop_variants <- function(maf, gene) {
+  required <- c(
+    "Hugo_Symbol", "Tumor_Sample_Barcode", "Variant_Classification",
+    "HGVSp", "HGVSc"
+  )
+  if (!all(required %in% names(maf@data))) return(data.table())
+
+  variants <- data.table::copy(maf@data[as.character(Hugo_Symbol) == gene])
+  variants <- variants[
+    !is.na(HGVSp) & nzchar(trimws(as.character(HGVSp))) &
+      !is.na(Tumor_Sample_Barcode)
+  ]
+  if (!nrow(variants)) return(data.table())
+
+  variants[, aa_position := .protein_position(HGVSp)]
+  variants <- variants[is.finite(aa_position)]
+  if (!nrow(variants)) return(data.table())
+
+  cohort_ids <- character()
+  if ("Tumor_Sample_Barcode" %in% names(maf@clinical.data)) {
+    cohort_ids <- unique(as.character(maf@clinical.data$Tumor_Sample_Barcode))
+  }
+  if (!length(cohort_ids)) {
+    cohort_ids <- unique(as.character(maf@data$Tumor_Sample_Barcode))
+  }
+  cohort_size <- length(cohort_ids[!is.na(cohort_ids) & nzchar(cohort_ids)])
+
+  summarized <- variants[, .(
+    sample_count = data.table::uniqueN(as.character(Tumor_Sample_Barcode)),
+    classification = paste(
+      sort(unique(as.character(Variant_Classification))),
+      collapse = ", "
+    ),
+    coding_change = paste(
+      sort(unique(as.character(HGVSc[!is.na(HGVSc) & nzchar(HGVSc)]))),
+      collapse = ", "
+    )
+  ), by = .(
+    gene = as.character(Hugo_Symbol),
+    protein_change = as.character(HGVSp),
+    aa_position
+  )]
+
+  summarized[, `:=`(
+    short_change = .short_protein_change(protein_change),
+    cohort_size = cohort_size,
+    cohort_percent = if (cohort_size > 0) sample_count / cohort_size * 100 else NA_real_
+  )]
+  summarized[, hover_text := sprintf(
+    paste0(
+      "<b>%s %s</b>",
+      "<br>Samples: %d of %d",
+      "<br>Cohort frequency: %.1f%%",
+      "<br>Protein position: %d",
+      "<br>Classification: %s",
+      "%s"
+    ),
+    gene,
+    short_change,
+    sample_count,
+    cohort_size,
+    cohort_percent,
+    as.integer(aa_position),
+    gsub("_", " ", classification, fixed = TRUE),
+    ifelse(nzchar(coding_change), paste0("<br>Coding change: ", coding_change), "")
+  )]
+
+  summarized[order(aa_position, -sample_count)]
+}
+
+.lollipop_domains <- function(gene, fallback_length) {
+  domains <- tryCatch(
+    suppressMessages(
+      getFromNamespace(".getdomains", "maftools")(geneID = gene)
+    ),
+    error = function(e) NULL
+  )
+
+  if (is.null(domains) || !nrow(domains)) {
+    return(list(data = data.table(), protein_length = fallback_length, transcript = NULL))
+  }
+
+  domains <- data.table::as.data.table(domains)
+  domains <- domains[is.finite(Start) & is.finite(End)]
+  protein_length <- suppressWarnings(max(as.numeric(domains$aa.length), na.rm = TRUE))
+  if (!is.finite(protein_length)) protein_length <- fallback_length
+  transcript <- unique(as.character(domains$refseq.ID))
+  transcript <- transcript[!is.na(transcript) & nzchar(transcript)]
+
+  list(
+    data = unique(domains[, .(Start, End, Label)]),
+    protein_length = max(protein_length, fallback_length),
+    transcript = if (length(transcript)) transcript[1] else NULL
+  )
+}
+
+lollipop_variant_plot <- function(maf, gene, cohort_label) {
+  variants <- summarize_lollipop_variants(maf, gene)
+  if (!nrow(variants)) {
+    return(.empty_plot_message(paste("No protein variants found for", gene)))
+  }
+
+  max_count <- max(variants$sample_count)
+  max_position <- max(variants$aa_position)
+  domain_info <- .lollipop_domains(gene, fallback_length = max_position)
+  domains <- domain_info$data
+  protein_length <- max(domain_info$protein_length, max_position)
+  domain_height <- max(0.18, max_count * 0.035)
+  domain_gap <- domain_height * 0.18
+  domain_bottom <- -(domain_height + domain_gap)
+
+  variant_classes <- unique(variants$classification)
+  class_palette <- c(
+    Missense_Mutation = "#238B8D",
+    Nonsense_Mutation = "#D1495B",
+    Frame_Shift_Del = "#7A5195",
+    Frame_Shift_Ins = "#955196",
+    In_Frame_Del = "#E59F3A",
+    In_Frame_Ins = "#F2C14E",
+    Splice_Site = "#4D648D",
+    Nonstop_Mutation = "#8F2D56"
+  )
+  missing_classes <- setdiff(variant_classes, names(class_palette))
+  if (length(missing_classes)) {
+    fallback_colors <- grDevices::hcl.colors(length(missing_classes), "Dark 3")
+    class_palette <- c(class_palette, stats::setNames(fallback_colors, missing_classes))
+  }
+
+  plot <- ggplot() +
+    geom_hline(yintercept = 0, color = "#68717B", linewidth = 0.5) +
+    geom_segment(
+      data = variants,
+      aes(x = aa_position, xend = aa_position, y = 0, yend = sample_count),
+      color = "#AAB1B8",
+      linewidth = 0.7
+    )
+
+  if (nrow(domains)) {
+    domain_labels <- unique(as.character(domains$Label))
+    domain_palette <- stats::setNames(
+      grDevices::hcl.colors(length(domain_labels), "Set 2"),
+      domain_labels
+    )
+    domains[, label_text := gsub("_", " ", as.character(Label), fixed = TRUE)]
+    domains[, label_x := (Start + End) / 2]
+    domains[, domain_track := seq_len(.N)]
+    domains[, domain_ymax := -(domain_track - 1) * (domain_height + domain_gap) - domain_gap]
+    domains[, domain_ymin := domain_ymax - domain_height]
+    domain_bottom <- min(domains$domain_ymin) - domain_gap
+
+    plot <- plot +
+      geom_rect(
+        data = domains,
+        aes(xmin = Start, xmax = End, ymin = domain_ymin, ymax = domain_ymax, fill = Label),
+        color = "#4E5964",
+        linewidth = 0.35,
+        alpha = 0.9
+      ) +
+      geom_text(
+        data = domains,
+        aes(x = label_x, y = (domain_ymin + domain_ymax) / 2, label = label_text),
+        size = 3,
+        check_overlap = TRUE
+      ) +
+      scale_fill_manual(values = domain_palette, guide = "none")
+  }
+
+  subtitle <- sprintf(
+    "%s | %d samples with mutation data%s",
+    cohort_label,
+    unique(variants$cohort_size)[1],
+    if (!is.null(domain_info$transcript)) paste0(" | ", domain_info$transcript) else ""
+  )
+
+  point_layer <- suppressWarnings(
+    geom_point(
+      data = variants,
+      aes(
+        x = aa_position,
+        y = sample_count,
+        color = classification,
+        text = hover_text
+      ),
+      size = 2,
+      alpha = 0.6
+    )
+  )
+
+  plot +
+    point_layer +
+    scale_color_manual(
+      values = class_palette,
+      breaks = variant_classes,
+      labels = gsub("_", " ", variant_classes, fixed = TRUE)
+    ) +
+    scale_x_continuous(
+      limits = c(0, protein_length),
+      expand = expansion(mult = c(0.01, 0.02))
+    ) +
+    scale_y_continuous(
+      breaks = pretty(c(0, max_count)),
+      limits = c(domain_bottom * 1.12, max_count * 1.12),
+      expand = expansion(mult = c(0, 0.02))
+    ) +
+    labs(
+      title = paste(gene, "protein variants"),
+      subtitle = subtitle,
+      x = "Amino acid position",
+      y = "Samples",
+      color = "Variant classification"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      plot.title = element_text(face = "bold", size = 10),
+      plot.subtitle = element_text(color = "#56616C"),
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold")
+    )
+}
+
+lollipop_variant_plotly <- function(plot) {
+  widget <- suppressWarnings(ggplotly(plot, tooltip = "text"))
+
+  for (i in seq_along(widget$x$data)) {
+    trace <- widget$x$data[[i]]
+    if (identical(trace$fill, "toself")) {
+      widget$x$data[[i]]$showlegend <- FALSE
+      widget$x$data[[i]]$hoverinfo <- "skip"
+    } else if (identical(trace$mode, "markers") && !is.null(trace$name)) {
+      clean_name <- sub("^\\((.*),1\\)$", "\\1", trace$name)
+      clean_name <- gsub("_", " ", clean_name, fixed = TRUE)
+      clean_name <- switch(
+        clean_name,
+        "Missense Mutation" = "Missense",
+        "Nonsense Mutation" = "Nonsense",
+        "In Frame Del" = "In-frame deletion",
+        "In Frame Ins" = "In-frame insertion",
+        "Frame Shift Del" = "Frameshift deletion",
+        "Frame Shift Ins" = "Frameshift insertion",
+        clean_name
+      )
+      widget$x$data[[i]]$name <- clean_name
+      widget$x$data[[i]]$legendgroup <- clean_name
+    } else if (!identical(trace$mode, "markers")) {
+      widget$x$data[[i]]$hoverinfo <- "skip"
+    }
+  }
+
+  widget %>%
+    layout(
+      hovermode = "closest",
+      legend = list(
+        orientation = "h",
+        x = 0,
+        xanchor = "left",
+        y = -0.22,
+        yanchor = "top",
+        title = list(text = ""),
+        font = list(size = 10)
+      ),
+      margin = list(b = 95)
+    ) %>%
+    config(displaylogo = FALSE)
+}
+
 .panel_help_text <- function(id) {
   help_text <- c(
     # how_it_works = "Load optional public ID lists, name cohorts, then apply sidebar filters to define analysis groups.",
@@ -256,8 +549,8 @@ survival_event_column <- function(surv_var) {
     mafSummary_g2 = "Mutation summary for this cohort, including variant classes and sample-level mutation burden.",
     oncoplot_g1 = "Top mutated genes in this cohort. Columns are samples and colors mark mutation types.",
     oncoplot_g2 = "Top mutated genes in this cohort. Columns are samples and colors mark mutation types.",
-    lollipopPlot_g1 = "Protein-position mutation plot for the selected gene. Peaks can indicate mutation hotspots.",
-    lollipopPlot_g2 = "Protein-position mutation plot for the selected gene. Peaks can indicate mutation hotspots.",
+    lollipopPlot_g1 = "Protein-position mutation plot for this cohort. Hover over a point for the variant and cohort frequency.",
+    lollipopPlot_g2 = "Protein-position mutation plot for this cohort. Hover over a point for the variant and cohort frequency.",
     interactionPlot_g1 = "Gene mutation co-occurrence and exclusivity patterns. Significant pairs are non-random.",
     interactionPlot_g2 = "Gene mutation co-occurrence and exclusivity patterns. Significant pairs are non-random.",
     mafCompOncoPlot = "Side-by-side mutation view for selected genes across cohorts.",

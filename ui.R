@@ -403,12 +403,12 @@ dashboardPage(
                fluidRow(
                  box(title = "", width = 6,
                      selectizeInput("gene_search_lollipop_g1", "Enter Gene for Lollipop Plot", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'),  width = "200px"),
-                     plotOutput("lollipopPlot_g1"),
+                     plotlyOutput("lollipopPlot_g1", height = "420px"),
                      plot_export_controls_ui("lollipopPlot_g1")
                  ),
                  box(title = "", width = 6,
                      selectizeInput("gene_search_lollipop_g2", "Enter Gene for Lollipop Plot", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'),  width = "200px"),
-                     plotOutput("lollipopPlot_g2"),
+                     plotlyOutput("lollipopPlot_g2", height = "420px"),
                      plot_export_controls_ui("lollipopPlot_g2")
                  )
                ),

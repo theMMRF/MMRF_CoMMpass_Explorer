@@ -1550,18 +1550,22 @@ shinyServer(function(input, output, session) {
 
   draw_lollipopPlot_g1 <- function() {
     req(input$gene_search_lollipop_g1)
-    if (input$gene_search_lollipop_g1 != "") {
-      lollipopPlot(maf = filtered_data[["cohort1_maf"]], AACol = "HGVSp", gene = input$gene_search_lollipop_g1)
-    }
-    invisible(NULL)
+    req(nzchar(input$gene_search_lollipop_g1))
+    lollipop_variant_plot(
+      maf = filtered_data[["cohort1_maf"]],
+      gene = input$gene_search_lollipop_g1,
+      cohort_label = .cohort_labels()[["Cohort1"]]
+    )
   }
 
   draw_lollipopPlot_g2 <- function() {
     req(input$gene_search_lollipop_g2)
-    if (input$gene_search_lollipop_g2 != "") {
-      lollipopPlot(maf = filtered_data[["cohort2_maf"]], AACol = "HGVSp", gene = input$gene_search_lollipop_g2)
-    }
-    invisible(NULL)
+    req(nzchar(input$gene_search_lollipop_g2))
+    lollipop_variant_plot(
+      maf = filtered_data[["cohort2_maf"]],
+      gene = input$gene_search_lollipop_g2,
+      cohort_label = .cohort_labels()[["Cohort2"]]
+    )
   }
 
   draw_interactionPlot_g1 <- function() {
@@ -1671,11 +1675,11 @@ shinyServer(function(input, output, session) {
   })
 
   # Draw lollipop plot based on gene search
-  output$lollipopPlot_g1 <- renderPlot({
-    draw_lollipopPlot_g1()
+  output$lollipopPlot_g1 <- renderPlotly({
+    lollipop_variant_plotly(draw_lollipopPlot_g1())
   })
-  output$lollipopPlot_g2 <- renderPlot({
-    draw_lollipopPlot_g2()
+  output$lollipopPlot_g2 <- renderPlotly({
+    lollipop_variant_plotly(draw_lollipopPlot_g2())
   })
 
   # Draw somatic interaction plot
