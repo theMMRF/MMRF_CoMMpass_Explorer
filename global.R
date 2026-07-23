@@ -109,6 +109,20 @@ clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
 
 
 # Helper functions -----------
+.mutation_data_available_ids <- function() {
+  ids <- character()
+  if ("clinical.data" %in% slotNames(maf_data) &&
+      "Tumor_Sample_Barcode" %in% names(maf_data@clinical.data)) {
+    ids <- as.character(maf_data@clinical.data$Tumor_Sample_Barcode)
+  }
+  if (!length(ids) && "Tumor_Sample_Barcode" %in% names(maf_data@data)) {
+    ids <- as.character(maf_data@data$Tumor_Sample_Barcode)
+  }
+
+  clinical_ids <- unique(as.character(clinical_data$Tumor_Sample_Barcode))
+  base::intersect(clinical_ids, unique(ids[!is.na(ids) & nzchar(ids)]))
+}
+
 get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
   if (row_count == 0) {
     # No rules, don't filter, return all IDs
@@ -116,13 +130,13 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
   }
 
   rows <- row_count
-  all_samples <- unique(clinical_data$Tumor_Sample_Barcode)
+  assayed_samples <- .mutation_data_available_ids()
   maf_table <- maf_data@data
 
   get_ids_for_rule <- function(gene, state) {
     mutated_ids <- maf_table[Hugo_Symbol == gene, unique(Tumor_Sample_Barcode)]
-    if (state == "Mutated") return(mutated_ids)
-    return(setdiff(all_samples, mutated_ids))
+    if (state == "Mutated") return(base::intersect(assayed_samples, mutated_ids))
+    base::setdiff(assayed_samples, mutated_ids)
   }
 
   result_ids <- NULL
@@ -131,7 +145,8 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
     state <- input[[paste0("state_mut_", i, "_", cohort_id)]]
     logic <- input[[paste0("logic_mut_", i, "_", cohort_id)]]
 
-    if (is.null(gene) || is.null(state)) next
+    if (is.null(gene) || !nzchar(gene) ||
+        is.null(state) || !state %in% c("Mutated", "Not Mutated")) next
 
     ids <- get_ids_for_rule(gene, state)
 
@@ -148,7 +163,10 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
     if (logic == "END") break
   }
 
-  return(result_ids)
+  if (is.null(result_ids)) {
+    return(unique(clinical_data$Tumor_Sample_Barcode))
+  }
+  result_ids
 }
 
 
@@ -160,6 +178,8 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
 
   gene_expr <- bulkseq_tpm[gene, ]
   names(gene_expr) <- colnames(bulkseq_tpm)
+  gene_expr <- gene_expr[is.finite(gene_expr)]
+  if (!length(gene_expr)) return(clinical_data[0, , drop = FALSE])
 
   if (threshold_type == "value") {
     if (is.null(min_value) || is.null(max_value) || is.na(min_value) || is.na(max_value)) return(clinical_data)
@@ -168,8 +188,8 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
     # Percentile range logic
     pct <- .sanitize_percentile_range(min_percentile, max_percentile)
     if (is.null(pct)) return(clinical_data)
-    lower_cutoff <- quantile(gene_expr, probs = pct$min / 100, na.rm = TRUE)
-    upper_cutoff <- quantile(gene_expr, probs = pct$max / 100, na.rm = TRUE)
+    lower_cutoff <- quantile(gene_expr, probs = pct$min / 100)
+    upper_cutoff <- quantile(gene_expr, probs = pct$max / 100)
     keep_ids <- names(gene_expr)[gene_expr >= lower_cutoff & gene_expr <= upper_cutoff]
   }
 

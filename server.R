@@ -402,7 +402,7 @@ shinyServer(function(input, output, session) {
   # Add new rows on click
   observeEvent(input$add_mut_row_cohort1, {
     isolate({
-      mut_rule_cache$cohort1 <- lapply(1:mut_row_counter$cohort1, function(i) {
+      mut_rule_cache$cohort1 <- lapply(seq_len(mut_row_counter$cohort1), function(i) {
         list(
           gene = input[[paste0("gene_mut_", i, "_cohort1")]],
           state = input[[paste0("state_mut_", i, "_cohort1")]],
@@ -419,7 +419,7 @@ shinyServer(function(input, output, session) {
     if (mut_row_counter$cohort1 > 0) {
       # Save inputs from remaining rows before decrement
       isolate({
-        mut_rule_cache$cohort1 <- lapply(1:(mut_row_counter$cohort1 - 1), function(i) {
+        mut_rule_cache$cohort1 <- lapply(seq_len(mut_row_counter$cohort1 - 1), function(i) {
           list(
             gene = input[[paste0("gene_mut_", i, "_cohort1")]],
             state = input[[paste0("state_mut_", i, "_cohort1")]],
@@ -434,7 +434,7 @@ shinyServer(function(input, output, session) {
 
   observeEvent(input$add_mut_row_cohort2, {
     isolate({
-      mut_rule_cache$cohort2 <- lapply(1:mut_row_counter$cohort2, function(i) {
+      mut_rule_cache$cohort2 <- lapply(seq_len(mut_row_counter$cohort2), function(i) {
         list(
           gene = input[[paste0("gene_mut_", i, "_cohort2")]],
           state = input[[paste0("state_mut_", i, "_cohort2")]],
@@ -449,7 +449,7 @@ shinyServer(function(input, output, session) {
   observeEvent(input$remove_mut_row_cohort2, {
     if (mut_row_counter$cohort2 > 0) {
       isolate({
-        mut_rule_cache$cohort2 <- lapply(1:(mut_row_counter$cohort2 - 1), function(i) {
+        mut_rule_cache$cohort2 <- lapply(seq_len(mut_row_counter$cohort2 - 1), function(i) {
           list(
             gene = input[[paste0("gene_mut_", i, "_cohort2")]],
             state = input[[paste0("state_mut_", i, "_cohort2")]],
@@ -466,10 +466,10 @@ shinyServer(function(input, output, session) {
   output$mutation_rules_cohort1 <- renderUI({
     if (mut_row_counter$cohort1 == 0) return(NULL)
 
-    lapply(1:mut_row_counter$cohort1, function(i) {
+    lapply(seq_len(mut_row_counter$cohort1), function(i) {
       cached <- if (length(mut_rule_cache$cohort1) >= i) mut_rule_cache$cohort1[[i]] else NULL
 
-      gene_val <- if (!is.null(cached)) cached$gene else NULL
+      gene_val <- if (!is.null(cached) && !is.null(cached$gene)) cached$gene else ""
       state_val <- if (!is.null(cached)) cached$state else "Mutated"
       logic_val <- if (!is.null(cached)) cached$logic else "END"
 
@@ -491,9 +491,9 @@ shinyServer(function(input, output, session) {
         selectizeInput(
           paste0("gene_mut_", i, "_cohort1"),
           label = tags$div(style = "font-size: 12px;", "Gene"),
-          choices = unique(maf_data@data$Hugo_Symbol),
+          choices = c("Select a gene" = "", unique(maf_data@data$Hugo_Symbol)),
           selected = gene_val,
-          options = list(maxOptions = 100),
+          options = list(maxOptions = 100, placeholder = "Select a gene"),
           width = "100%"
         ),
         br()
@@ -504,10 +504,10 @@ shinyServer(function(input, output, session) {
   output$mutation_rules_cohort2 <- renderUI({
     if (mut_row_counter$cohort2 == 0) return(NULL)
 
-    lapply(1:mut_row_counter$cohort2, function(i) {
+    lapply(seq_len(mut_row_counter$cohort2), function(i) {
       cached <- if (length(mut_rule_cache$cohort2) >= i) mut_rule_cache$cohort2[[i]] else NULL
 
-      gene_val <- if (!is.null(cached)) cached$gene else NULL
+      gene_val <- if (!is.null(cached) && !is.null(cached$gene)) cached$gene else ""
       state_val <- if (!is.null(cached)) cached$state else "Mutated"
       logic_val <- if (!is.null(cached)) cached$logic else "END"
 
@@ -529,9 +529,9 @@ shinyServer(function(input, output, session) {
         selectizeInput(
           paste0("gene_mut_", i, "_cohort2"),
           label = tags$div(style = "font-size: 12px;", "Gene"),
-          choices = unique(maf_data@data$Hugo_Symbol),
+          choices = c("Select a gene" = "", unique(maf_data@data$Hugo_Symbol)),
           selected = gene_val,
-          options = list(maxOptions = 100),
+          options = list(maxOptions = 100, placeholder = "Select a gene"),
           width = "100%"
         ),
         br()
@@ -777,6 +777,92 @@ shinyServer(function(input, output, session) {
     )
   }
 
+  .has_active_mutation_filter <- function(cohort_id, row_count, read_input = function(id) input[[id]]) {
+    if (row_count < 1) return(FALSE)
+
+    for (i in seq_len(row_count)) {
+      gene <- read_input(paste0("gene_mut_", i, "_", cohort_id))
+      state <- read_input(paste0("state_mut_", i, "_", cohort_id))
+      if (!is.null(gene) && nzchar(gene) &&
+          !is.null(state) && state %in% c("Mutated", "Not Mutated")) {
+        return(TRUE)
+      }
+    }
+    FALSE
+  }
+
+  .cohort_eligible_universe <- function(cohort_id) {
+    eligible <- copy(clinical_data)
+    filters <- .cohort_filters(cohort_id)
+    picker_map <- .make_picker_map(cohort_id)
+
+    for (i in seq_len(nrow(picker_map))) {
+      values <- filters[[picker_map$filter_key[i]]]
+      if (is.null(values) || !length(values)) next
+
+      column <- picker_map$column[i]
+      available <- !is.na(eligible[[column]]) & nzchar(trimws(as.character(eligible[[column]])))
+      eligible <- eligible[available, ]
+    }
+
+    age <- filters$age
+    if (!is.null(age) && length(age) == 2) {
+      eligible <- eligible[is.finite(eligible$Age), ]
+    }
+
+    mut_rows <- if (identical(cohort_id, "cohort1")) mut_row_counter$cohort1 else mut_row_counter$cohort2
+    if (.has_active_mutation_filter(
+      cohort_id,
+      mut_rows,
+      read_input = function(id) isolate(input[[id]])
+    )) {
+      eligible <- eligible[
+        eligible$Tumor_Sample_Barcode %in% .mutation_data_available_ids(),
+      ]
+    }
+
+    gene <- isolate(input[[paste0("gene_expr_search_", cohort_id)]])
+    if (!is.null(gene) && nzchar(gene) && gene %in% rownames(bulkseq_tpm)) {
+      expression <- bulkseq_tpm[gene, ]
+      expression_ids <- names(expression)[is.finite(expression)]
+      eligible <- eligible[eligible$Tumor_Sample_Barcode %in% expression_ids, ]
+    }
+
+    survival_enabled <- isTRUE(isolate(input[[paste0("enable_survival_filter_", cohort_id)]]))
+    if (survival_enabled) {
+      threshold_type <- isolate(input[[paste0("surv_threshold_type_", cohort_id)]])
+      threshold_is_set <- if (identical(threshold_type, "percentile")) {
+        values <- c(
+          isolate(input[[paste0("surv_threshold_min_percentile_", cohort_id)]]),
+          isolate(input[[paste0("surv_threshold_max_percentile_", cohort_id)]])
+        )
+        length(values) == 2 && all(is.finite(as.numeric(values)))
+      } else {
+        values <- c(
+          isolate(input[[paste0("surv_threshold_min_value_", cohort_id)]]),
+          isolate(input[[paste0("surv_threshold_max_value_", cohort_id)]])
+        )
+        length(values) == 2 && all(is.finite(as.numeric(values)))
+      }
+
+      if (threshold_is_set) {
+        surv_var <- isolate(input[[paste0("surv_variable_", cohort_id)]])
+        if (!is.null(surv_var) && surv_var %in% names(eligible)) {
+          eligible <- eligible[is.finite(eligible[[surv_var]]), ]
+        }
+
+        if (isTRUE(isolate(input[[paste0("require_surv_event_", cohort_id)]]))) {
+          event_var <- survival_event_column(surv_var)
+          if (!is.null(event_var) && event_var %in% names(eligible)) {
+            eligible <- eligible[!is.na(eligible[[event_var]]), ]
+          }
+        }
+      }
+    }
+
+    eligible
+  }
+
   .resolve_base_cohort <- function(cohort_id) {
     cohort_label <- if (identical(cohort_id, "cohort1")) "Cohort 1" else "Cohort 2"
     clinical_filtered <- filter_cohort_data(copy(clinical_data), .cohort_filters(cohort_id))
@@ -822,9 +908,10 @@ shinyServer(function(input, output, session) {
     return(clinical_filtered)
   }
 
-  .complement_of <- function(other_cohort_data) {
+  .complement_of <- function(other_cohort_data, reference_cohort_id) {
     other_ids <- unique(other_cohort_data$Tumor_Sample_Barcode)
-    copy(clinical_data[!(clinical_data$Tumor_Sample_Barcode %in% other_ids), ])
+    eligible <- .cohort_eligible_universe(reference_cohort_id)
+    copy(eligible[!(eligible$Tumor_Sample_Barcode %in% other_ids), ])
   }
 
   .empty_maf_subset <- function(patient_ids) {
@@ -863,10 +950,10 @@ shinyServer(function(input, output, session) {
 
     if (identical(complement_mode, "cohort1")) {
       base_cohort2 <- .resolve_base_cohort("cohort2")
-      base_cohort1 <- .complement_of(base_cohort2)
+      base_cohort1 <- .complement_of(base_cohort2, "cohort2")
     } else if (identical(complement_mode, "cohort2")) {
       base_cohort1 <- .resolve_base_cohort("cohort1")
-      base_cohort2 <- .complement_of(base_cohort1)
+      base_cohort2 <- .complement_of(base_cohort1, "cohort1")
     } else {
       base_cohort1 <- .resolve_base_cohort("cohort1")
       base_cohort2 <- .resolve_base_cohort("cohort2")
@@ -940,7 +1027,7 @@ shinyServer(function(input, output, session) {
     cohort_metadata$labels <- labels
     cohort_metadata$desc1 <- if (identical(complement_mode, "cohort1")) {
       sprintf(
-        "Complement of %s: all eligible samples not selected for %s after its filters/uploads (%d samples). Own filters/uploads are ignored in this mode.",
+        "Complement of %s: samples with the data required by %s's filters that were not selected after its filters/uploads (%d samples). Own filters/uploads are ignored in this mode.",
         labels[["Cohort2"]],
         labels[["Cohort2"]],
         nrow(data_cohort1)
@@ -950,7 +1037,7 @@ shinyServer(function(input, output, session) {
     }
     cohort_metadata$desc2 <- if (identical(complement_mode, "cohort2")) {
       sprintf(
-        "Complement of %s: all eligible samples not selected for %s after its filters/uploads (%d samples). Own filters/uploads are ignored in this mode.",
+        "Complement of %s: samples with the data required by %s's filters that were not selected after its filters/uploads (%d samples). Own filters/uploads are ignored in this mode.",
         labels[["Cohort1"]],
         labels[["Cohort1"]],
         nrow(data_cohort2)
