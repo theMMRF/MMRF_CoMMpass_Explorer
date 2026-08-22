@@ -242,8 +242,7 @@ dashboardPage(
       ),
               tabPanel("Overall Summary", value = "Overall Summary",
                fluidRow(
-                 column(6, div(id = "counts_card", htmlOutput("clinicalNum"))),
-                 column(6, align = "right", downloadButton("download_clinical", "Download Filtered Clinical Data"))
+                 column(12, div(id = "counts_card", htmlOutput("clinicalNum")))
                ),
 
                fluidRow(
@@ -458,7 +457,7 @@ dashboardPage(
                ),
       ),
 
-      tabPanel("Tumor Profile", value = "Tumor Profile",
+      tabPanel("Tumor Gene Expression", value = "Tumor Profile",
                fluidRow(
                  column(12, htmlOutput("bulkNum"))
                ),

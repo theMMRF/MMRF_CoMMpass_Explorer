@@ -152,12 +152,14 @@ shinyServer(function(input, output, session) {
     if (mut_rows > 0) {
       mut_parts <- character()
       for (i in seq_len(mut_rows)) {
-        gene <- input[[paste0("gene_mut_", i, "_", cohort_id)]]
+        selection <- .mutation_rule_selection(input, cohort_id, i)
         state <- input[[paste0("state_mut_", i, "_", cohort_id)]]
         logic <- input[[paste0("logic_mut_", i, "_", cohort_id)]]
-        if (!is.null(gene) && nzchar(gene) && !is.null(state) && nzchar(state)) {
+        if (!is.null(selection) && nzchar(selection) && !is.null(state) && nzchar(state)) {
           connector <- if (!is.null(logic) && !identical(logic, "END")) paste0(" ", logic) else ""
-          mut_parts <- c(mut_parts, paste0(gene, " ", state, connector))
+          mut_parts <- c(mut_parts, paste0(
+            .mutation_selector_display(selection), " ", state, connector
+          ))
         }
       }
       if (length(mut_parts)) parts <- c(parts, paste0("Mutation rules: ", paste(mut_parts, collapse = "; ")))
@@ -392,6 +394,7 @@ shinyServer(function(input, output, session) {
   # Mutational Profile. Store rule row counters
   mut_row_counter <- reactiveValues(cohort1 = 0, cohort2 = 0)
   mut_rule_cache <- reactiveValues(cohort1 = list(), cohort2 = list())
+  mut_rule_restore <- reactiveValues(cohort1 = FALSE, cohort2 = FALSE)
 
   # Disable remove when no rules exist
   observe({
@@ -405,10 +408,13 @@ shinyServer(function(input, output, session) {
       mut_rule_cache$cohort1 <- lapply(seq_len(mut_row_counter$cohort1), function(i) {
         list(
           gene = input[[paste0("gene_mut_", i, "_cohort1")]],
+          codon = input[[paste0("codon_mut_", i, "_cohort1")]],
+          variant = input[[paste0("variant_mut_", i, "_cohort1")]],
           state = input[[paste0("state_mut_", i, "_cohort1")]],
           logic = input[[paste0("logic_mut_", i, "_cohort1")]]
         )
       })
+      mut_rule_restore$cohort1 <- TRUE
     })
     mut_row_counter$cohort1 <- mut_row_counter$cohort1 + 1
   })
@@ -422,10 +428,13 @@ shinyServer(function(input, output, session) {
         mut_rule_cache$cohort1 <- lapply(seq_len(mut_row_counter$cohort1 - 1), function(i) {
           list(
             gene = input[[paste0("gene_mut_", i, "_cohort1")]],
+            codon = input[[paste0("codon_mut_", i, "_cohort1")]],
+            variant = input[[paste0("variant_mut_", i, "_cohort1")]],
             state = input[[paste0("state_mut_", i, "_cohort1")]],
             logic = input[[paste0("logic_mut_", i, "_cohort1")]]
           )
         })
+        mut_rule_restore$cohort1 <- TRUE
       })
       mut_row_counter$cohort1 <- mut_row_counter$cohort1 - 1
     }
@@ -437,10 +446,13 @@ shinyServer(function(input, output, session) {
       mut_rule_cache$cohort2 <- lapply(seq_len(mut_row_counter$cohort2), function(i) {
         list(
           gene = input[[paste0("gene_mut_", i, "_cohort2")]],
+          codon = input[[paste0("codon_mut_", i, "_cohort2")]],
+          variant = input[[paste0("variant_mut_", i, "_cohort2")]],
           state = input[[paste0("state_mut_", i, "_cohort2")]],
           logic = input[[paste0("logic_mut_", i, "_cohort2")]]
         )
       })
+      mut_rule_restore$cohort2 <- TRUE
     })
     mut_row_counter$cohort2 <- mut_row_counter$cohort2 + 1
   })
@@ -452,15 +464,38 @@ shinyServer(function(input, output, session) {
         mut_rule_cache$cohort2 <- lapply(seq_len(mut_row_counter$cohort2 - 1), function(i) {
           list(
             gene = input[[paste0("gene_mut_", i, "_cohort2")]],
+            codon = input[[paste0("codon_mut_", i, "_cohort2")]],
+            variant = input[[paste0("variant_mut_", i, "_cohort2")]],
             state = input[[paste0("state_mut_", i, "_cohort2")]],
             logic = input[[paste0("logic_mut_", i, "_cohort2")]]
           )
         })
+        mut_rule_restore$cohort2 <- TRUE
       })
 
       mut_row_counter$cohort2 <- mut_row_counter$cohort2 - 1
     }
   })
+
+  mutation_selectize_options <- function(placeholder) list(
+    maxOptions = 100,
+    allowEmptyOption = TRUE,
+    placeholder = placeholder,
+    score = I(paste0(
+      "function(search) {",
+      "  var terms = search.toLowerCase().trim().split(/\\s+/).filter(Boolean);",
+      "  return function(item) {",
+      "    var text = ((item.label || '') + ' ' + (item.value || '')).toLowerCase();",
+      "    for (var i = 0; i < terms.length; i++) {",
+      "      if (text.indexOf(terms[i]) === -1) return 0;",
+      "    }",
+      "    var match = (item.label || '').match(/\\((\\d+) patients?\\)$/);",
+      "    var prevalence = match ? parseInt(match[1], 10) : 0;",
+      "    return 1 + Math.min(prevalence, 999999) / 1000000;",
+      "  };",
+      "}"
+    ))
+  )
 
   # Render dynamic rule UI
   output$mutation_rules_cohort1 <- renderUI({
@@ -491,9 +526,25 @@ shinyServer(function(input, output, session) {
         selectizeInput(
           paste0("gene_mut_", i, "_cohort1"),
           label = tags$div(style = "font-size: 12px;", "Gene"),
-          choices = c("Select a gene" = "", unique(maf_data@data$Hugo_Symbol)),
+          choices = NULL,
           selected = gene_val,
-          options = list(maxOptions = 100, placeholder = "Select a gene"),
+          options = mutation_selectize_options("Search genes..."),
+          width = "100%"
+        ),
+        selectizeInput(
+          paste0("codon_mut_", i, "_cohort1"),
+          label = tags$div(style = "font-size: 12px;", "Codon (optional)"),
+          choices = NULL,
+          selected = if (!is.null(cached$codon)) cached$codon else "",
+          options = mutation_selectize_options("Any codon"),
+          width = "100%"
+        ),
+        selectizeInput(
+          paste0("variant_mut_", i, "_cohort1"),
+          label = tags$div(style = "font-size: 12px;", "Variant (optional)"),
+          choices = NULL,
+          selected = if (!is.null(cached$variant)) cached$variant else "",
+          options = mutation_selectize_options("Any variant"),
           width = "100%"
         ),
         br()
@@ -529,14 +580,164 @@ shinyServer(function(input, output, session) {
         selectizeInput(
           paste0("gene_mut_", i, "_cohort2"),
           label = tags$div(style = "font-size: 12px;", "Gene"),
-          choices = c("Select a gene" = "", unique(maf_data@data$Hugo_Symbol)),
+          choices = NULL,
           selected = gene_val,
-          options = list(maxOptions = 100, placeholder = "Select a gene"),
+          options = mutation_selectize_options("Search genes..."),
+          width = "100%"
+        ),
+        selectizeInput(
+          paste0("codon_mut_", i, "_cohort2"),
+          label = tags$div(style = "font-size: 12px;", "Codon (optional)"),
+          choices = NULL,
+          selected = if (!is.null(cached$codon)) cached$codon else "",
+          options = mutation_selectize_options("Any codon"),
+          width = "100%"
+        ),
+        selectizeInput(
+          paste0("variant_mut_", i, "_cohort2"),
+          label = tags$div(style = "font-size: 12px;", "Variant (optional)"),
+          choices = NULL,
+          selected = if (!is.null(cached$variant)) cached$variant else "",
+          options = mutation_selectize_options("Any variant"),
           width = "100%"
         ),
         br()
       )
     })
+  })
+
+  .update_mutation_rule_choices <- function(cohort_id) {
+    row_count <- if (identical(cohort_id, "cohort1")) {
+      mut_row_counter$cohort1
+    } else {
+      mut_row_counter$cohort2
+    }
+    if (row_count < 1) return()
+
+    cache <- if (identical(cohort_id, "cohort1")) {
+      mut_rule_cache$cohort1
+    } else {
+      mut_rule_cache$cohort2
+    }
+
+    session$onFlushed(function() {
+      for (i in seq_len(row_count)) {
+        gene_id <- paste0("gene_mut_", i, "_", cohort_id)
+        codon_id <- paste0("codon_mut_", i, "_", cohort_id)
+        variant_id <- paste0("variant_mut_", i, "_", cohort_id)
+        cached <- if (length(cache) >= i) cache[[i]] else NULL
+
+        gene <- isolate(input[[gene_id]])
+        if ((is.null(gene) || !length(gene) || !nzchar(gene[1])) && !is.null(cached$gene)) {
+          gene <- cached$gene
+        }
+        gene_choices <- mutation_gene_choices()
+        if (is.null(gene) || !length(gene) || !gene[1] %in% unname(gene_choices)) gene <- ""
+
+        updateSelectizeInput(
+          session,
+          gene_id,
+          choices = gene_choices,
+          selected = gene,
+          server = TRUE
+        )
+
+        codon <- isolate(input[[codon_id]])
+        if ((is.null(codon) || !length(codon) || !nzchar(codon[1])) && !is.null(cached$codon)) {
+          codon <- cached$codon
+        }
+        codon_choices <- mutation_codon_choices(gene)
+        if (is.null(codon) || !length(codon) || !codon[1] %in% unname(codon_choices)) codon <- ""
+        updateSelectizeInput(
+          session, codon_id, choices = codon_choices, selected = codon, server = TRUE
+        )
+
+        variant <- isolate(input[[variant_id]])
+        if ((is.null(variant) || !length(variant) || !nzchar(variant[1])) && !is.null(cached$variant)) {
+          variant <- cached$variant
+        }
+        variant_choices <- mutation_variant_choices(gene, codon)
+        if (is.null(variant) || !length(variant) || !variant[1] %in% unname(variant_choices)) variant <- ""
+        updateSelectizeInput(
+          session, variant_id, choices = variant_choices, selected = variant, server = TRUE
+        )
+      }
+    }, once = TRUE)
+  }
+
+  observeEvent(mut_row_counter$cohort1, {
+    .update_mutation_rule_choices("cohort1")
+  }, ignoreInit = FALSE)
+
+  observeEvent(mut_row_counter$cohort2, {
+    .update_mutation_rule_choices("cohort2")
+  }, ignoreInit = FALSE)
+
+  observe({
+    for (cohort_id in c("cohort1", "cohort2")) {
+      row_count <- if (identical(cohort_id, "cohort1")) {
+        mut_row_counter$cohort1
+      } else {
+        mut_row_counter$cohort2
+      }
+      if (row_count < 1) next
+
+      for (i in seq_len(row_count)) {
+        gene_id <- paste0("gene_mut_", i, "_", cohort_id)
+        codon_id <- paste0("codon_mut_", i, "_", cohort_id)
+        gene <- input[[gene_id]]
+        codon <- isolate(input[[codon_id]])
+        restoring <- isolate(mut_rule_restore[[cohort_id]])
+        cache <- isolate(mut_rule_cache[[cohort_id]])
+        cached <- if (restoring && length(cache) >= i) cache[[i]] else NULL
+
+        codon_choices <- mutation_codon_choices(gene)
+        if ((is.null(codon) || !length(codon) || !nzchar(codon[1])) &&
+            !is.null(cached$gene) && identical(cached$gene, gene) &&
+            !is.null(cached$codon)) {
+          codon <- cached$codon
+        }
+        valid_codon <- if (!is.null(codon) && length(codon) && codon[1] %in% unname(codon_choices)) codon[1] else ""
+        updateSelectizeInput(
+          session, codon_id, choices = codon_choices, selected = valid_codon, server = TRUE
+        )
+      }
+    }
+  })
+
+  observe({
+    for (cohort_id in c("cohort1", "cohort2")) {
+      row_count <- if (identical(cohort_id, "cohort1")) {
+        mut_row_counter$cohort1
+      } else {
+        mut_row_counter$cohort2
+      }
+      if (row_count < 1) next
+
+      for (i in seq_len(row_count)) {
+        gene_id <- paste0("gene_mut_", i, "_", cohort_id)
+        codon_id <- paste0("codon_mut_", i, "_", cohort_id)
+        variant_id <- paste0("variant_mut_", i, "_", cohort_id)
+        gene <- input[[gene_id]]
+        codon <- input[[codon_id]]
+        restoring <- isolate(mut_rule_restore[[cohort_id]])
+        cache <- isolate(mut_rule_cache[[cohort_id]])
+        cached <- if (restoring && length(cache) >= i) cache[[i]] else NULL
+
+        variant_choices <- mutation_variant_choices(gene, codon)
+        variant <- isolate(input[[variant_id]])
+        if ((is.null(variant) || !length(variant) || !nzchar(variant[1])) &&
+            !is.null(cached$gene) && identical(cached$gene, gene) &&
+            !is.null(cached$codon) && identical(cached$codon, codon) &&
+            !is.null(cached$variant)) {
+          variant <- cached$variant
+        }
+        valid_variant <- if (!is.null(variant) && length(variant) && variant[1] %in% unname(variant_choices)) variant[1] else ""
+        updateSelectizeInput(
+          session, variant_id, choices = variant_choices, selected = valid_variant, server = TRUE
+        )
+      }
+    }
   })
 
   observe({
@@ -1146,16 +1347,6 @@ shinyServer(function(input, output, session) {
       htmltools::htmlEscape(cohort_metadata$desc2)
     ))
   })
-
-  # Download filtered clinical data
-  output$download_clinical <- downloadHandler(
-    filename = function() {
-      paste0("Filtered_Clinical_Data_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      write.csv(filtered_data$combined, file, row.names = FALSE)
-    }
-  )
 
   # MAF
   output$mafNum <- renderUI({

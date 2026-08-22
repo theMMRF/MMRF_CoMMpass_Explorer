@@ -131,24 +131,42 @@ get_mutation_filtered_ids <- function(input, cohort_id, row_count) {
 
   rows <- row_count
   assayed_samples <- .mutation_data_available_ids()
-  maf_table <- maf_data@data
+  get_ids_for_rule <- function(selection, state) {
+    selector <- .parse_mutation_selector(selection)
+    if (is.null(selector)) return(character())
 
-  get_ids_for_rule <- function(gene, state) {
-    mutated_ids <- maf_table[Hugo_Symbol == gene, unique(Tumor_Sample_Barcode)]
+    if (identical(selector$type, "gene")) {
+      mutated_ids <- maf_data@data[
+        as.character(Hugo_Symbol) == selector$gene,
+        unique(as.character(Tumor_Sample_Barcode))
+      ]
+    } else if (identical(selector$type, "codon")) {
+      mutated_ids <- .mutation_variant_index[
+        gene == selector$gene & ref_aa == selector$ref_aa &
+          aa_position == selector$aa_position,
+        unique(sample_id)
+      ]
+    } else {
+      mutated_ids <- .mutation_variant_index[
+        gene == selector$gene & short_change == selector$short_change,
+        unique(sample_id)
+      ]
+    }
+
     if (state == "Mutated") return(base::intersect(assayed_samples, mutated_ids))
     base::setdiff(assayed_samples, mutated_ids)
   }
 
   result_ids <- NULL
   for (i in 1:rows) {
-    gene <- input[[paste0("gene_mut_", i, "_", cohort_id)]]
+    selection <- .mutation_rule_selection(input, cohort_id, i)
     state <- input[[paste0("state_mut_", i, "_", cohort_id)]]
     logic <- input[[paste0("logic_mut_", i, "_", cohort_id)]]
 
-    if (is.null(gene) || !nzchar(gene) ||
+    if (is.null(selection) || !nzchar(selection) ||
         is.null(state) || !state %in% c("Mutated", "Not Mutated")) next
 
-    ids <- get_ids_for_rule(gene, state)
+    ids <- get_ids_for_rule(selection, state)
 
     if (is.null(result_ids)) {
       result_ids <- ids
@@ -259,6 +277,180 @@ survival_event_column <- function(surv_var) {
     sub("^.*?([0-9]+).*$", "\\1", change[has_position])
   ))
   position
+}
+
+.parse_mutation_selector <- function(value) {
+  if (is.null(value) || !length(value) || !nzchar(value[1])) return(NULL)
+  value <- as.character(value[1])
+  parts <- strsplit(value, "::", fixed = TRUE)[[1]]
+
+  if (length(parts) == 2 && identical(parts[1], "gene")) {
+    return(list(type = "gene", gene = parts[2]))
+  }
+  if (length(parts) == 4 && identical(parts[1], "codon")) {
+    position <- suppressWarnings(as.numeric(parts[4]))
+    if (!is.finite(position)) return(NULL)
+    return(list(
+      type = "codon",
+      gene = parts[2],
+      ref_aa = parts[3],
+      aa_position = position
+    ))
+  }
+  if (length(parts) == 3 && identical(parts[1], "variant")) {
+    return(list(type = "variant", gene = parts[2], short_change = parts[3]))
+  }
+
+  # Preserve compatibility with gene-only values from an existing session.
+  list(type = "gene", gene = value)
+}
+
+.mutation_selector_display <- function(value) {
+  selector <- .parse_mutation_selector(value)
+  if (is.null(selector)) return("")
+  if (identical(selector$type, "gene")) return(selector$gene)
+  if (identical(selector$type, "codon")) {
+    return(paste0(selector$gene, " ", selector$ref_aa, as.integer(selector$aa_position)))
+  }
+  paste0(selector$gene, " ", selector$short_change)
+}
+
+.mutation_rule_selection <- function(input, cohort_id, row_index) {
+  suffix <- paste0("_", row_index, "_", cohort_id)
+  gene <- input[[paste0("gene_mut", suffix)]]
+  codon_value <- input[[paste0("codon_mut", suffix)]]
+  variant_value <- input[[paste0("variant_mut", suffix)]]
+
+  if (is.null(gene) || !length(gene) || !nzchar(gene[1])) return(NULL)
+  gene <- as.character(gene[1])
+
+  codon <- .parse_mutation_selector(codon_value)
+  codon_is_valid <- !is.null(codon) && identical(codon$type, "codon") &&
+    identical(codon$gene, gene)
+
+  variant <- .parse_mutation_selector(variant_value)
+  variant_is_valid <- !is.null(variant) && identical(variant$type, "variant") &&
+    identical(variant$gene, gene)
+  if (variant_is_valid && codon_is_valid) {
+    variant_position <- .protein_position(variant$short_change)
+    variant_is_valid <- length(variant_position) == 1 && is.finite(variant_position) &&
+      identical(substr(variant$short_change, 1, 1), codon$ref_aa) &&
+      identical(as.numeric(variant_position), as.numeric(codon$aa_position))
+  }
+
+  if (variant_is_valid) return(as.character(variant_value[1]))
+  if (codon_is_valid) return(as.character(codon_value[1]))
+  paste("gene", gene, sep = "::")
+}
+
+.build_mutation_filter_catalog <- function() {
+  assayed_samples <- .mutation_data_available_ids()
+  gene_counts <- maf_data@data[
+    as.character(Tumor_Sample_Barcode) %in% assayed_samples,
+    .(
+    patients = data.table::uniqueN(as.character(Tumor_Sample_Barcode))
+    ),
+    by = .(gene = as.character(Hugo_Symbol))
+  ]
+  gene_counts <- gene_counts[!is.na(gene) & nzchar(gene)]
+  gene_counts[, `:=`(
+    type_rank = 1L,
+    type = "gene",
+    ref_aa = NA_character_,
+    aa_position = NA_real_,
+    short_change = NA_character_,
+    value = paste("gene", gene, sep = "::"),
+    label = sprintf("%s - any mutation (%d patients)", gene, patients)
+  )]
+
+  codon_counts <- .mutation_variant_index[, .(
+    patients = data.table::uniqueN(sample_id)
+  ), by = .(gene, ref_aa, aa_position)]
+  codon_counts[, `:=`(
+    type_rank = 2L,
+    type = "codon",
+    short_change = NA_character_,
+    value = paste("codon", gene, ref_aa, as.integer(aa_position), sep = "::"),
+    label = sprintf(
+      "%s %s%d - any change at codon (%d patients)",
+      gene, ref_aa, as.integer(aa_position), patients
+    )
+  )]
+
+  variant_counts <- .mutation_variant_index[, .(
+    patients = data.table::uniqueN(sample_id)
+  ), by = .(gene, short_change)]
+  variant_counts[, `:=`(
+    type_rank = 3L,
+    type = "variant",
+    ref_aa = substr(short_change, 1, 1),
+    aa_position = .protein_position(short_change),
+    value = paste("variant", gene, short_change, sep = "::"),
+    label = sprintf("%s %s (%d patients)", gene, short_change, patients)
+  )]
+
+  catalog <- data.table::rbindlist(list(
+    gene_counts[, .(type, gene, ref_aa, aa_position, short_change, value, label, patients, type_rank)],
+    codon_counts[, .(type, gene, ref_aa, aa_position, short_change, value, label, patients, type_rank)],
+    variant_counts[, .(type, gene, ref_aa, aa_position, short_change, value, label, patients, type_rank)]
+  ))
+  catalog <- unique(catalog, by = "value")
+  catalog <- catalog[order(-patients, type_rank, label)]
+  catalog
+}
+
+.mutation_variant_index <- data.table::copy(maf_data@data[, .(
+  gene = as.character(Hugo_Symbol),
+  sample_id = as.character(Tumor_Sample_Barcode),
+  hgvsp = as.character(HGVSp)
+)])
+.mutation_variant_index[, `:=`(
+  short_change = .short_protein_change(hgvsp),
+  aa_position = .protein_position(hgvsp)
+)]
+.mutation_variant_index[, ref_aa := substr(short_change, 1, 1)]
+.mutation_variant_index <- .mutation_variant_index[
+  !is.na(gene) & nzchar(gene) &
+    !is.na(sample_id) & nzchar(sample_id) &
+    sample_id %in% .mutation_data_available_ids() &
+    is.finite(aa_position) & grepl("^[A-Z*][0-9]+", short_change)
+]
+
+mutation_filter_catalog <- .build_mutation_filter_catalog()
+
+mutation_gene_choices <- function() {
+  choices <- mutation_filter_catalog[type == "gene"]
+  labels <- sprintf("%s (%d patients)", choices$gene, choices$patients)
+  c("Select a gene" = "", stats::setNames(choices$gene, labels))
+}
+
+mutation_codon_choices <- function(gene) {
+  if (is.null(gene) || !length(gene) || !nzchar(gene[1])) {
+    return(c("Any codon" = ""))
+  }
+  target_gene <- as.character(gene[1])
+  choices <- mutation_filter_catalog[type == "codon" & gene == target_gene]
+  labels <- sprintf(
+    "%s%d (%d patients)", choices$ref_aa, as.integer(choices$aa_position), choices$patients
+  )
+  c("Any codon" = "", stats::setNames(choices$value, labels))
+}
+
+mutation_variant_choices <- function(gene, codon_value = NULL) {
+  if (is.null(gene) || !length(gene) || !nzchar(gene[1])) {
+    return(c("Any variant" = ""))
+  }
+
+  target_gene <- as.character(gene[1])
+  choices <- mutation_filter_catalog[type == "variant" & gene == target_gene]
+  codon <- .parse_mutation_selector(codon_value)
+  if (!is.null(codon) && identical(codon$type, "codon") && identical(codon$gene, target_gene)) {
+    choices <- choices[
+      ref_aa == codon$ref_aa & aa_position == codon$aa_position
+    ]
+  }
+  labels <- sprintf("%s (%d patients)", choices$short_change, choices$patients)
+  c("Any variant" = "", stats::setNames(choices$value, labels))
 }
 
 summarize_lollipop_variants <- function(maf, gene) {
