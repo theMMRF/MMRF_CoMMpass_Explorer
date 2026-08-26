@@ -8,14 +8,14 @@ packages <- c("shiny", "shinydashboard", "shinyWidgets", "shinyjs", "rintrojs",
 lapply(packages, library, character.only = TRUE)
 
 # Load data ------
-bulkseq <- readRDS("data/bulkseq_baseline_cleaned.rds")
-bulkseq_tpm <- readRDS("data/bulkseq_tpm_baseline_cleaned.rds")
-clinical_data <- readRDS("data/clinical_data_n1141.rds")
-maf_data <- readRDS("data/maf_data.rds")
-sc_meta <- readRDS("data/sc_meta_manuscript_baseline.rds")
-ssgsea_result_ca <- readRDS("data/ssgsea_result_ca.rds")
-pseudo_bulk_counts <- readRDS("data/pseudobulk_data_manuscript_Counts.rds")
-pseudo_bulk_norm <- readRDS("data/pseudobulk_data_manuscript_LogNormalize.rds")
+bulkseq <- readRDS("../../data/commpass_explorer/bulkseq_baseline_cleaned.rds")
+bulkseq_tpm <- readRDS("../../data/commpass_explorer/bulkseq_tpm_baseline_cleaned.rds")
+clinical_data <- readRDS("../../data/commpass_explorer/clinical_data_n1141.rds")
+maf_data <- readRDS("../../data/commpass_explorer/maf_data.rds")
+sc_meta <- readRDS("../../data/commpass_explorer/sc_meta_manuscript_baseline.rds")
+ssgsea_result_ca <- readRDS("../../data/commpass_explorer/ssgsea_result_ca.rds")
+pseudo_bulk_counts <- readRDS("../../data/commpass_explorer/pseudobulk_data_manuscript_Counts.rds")
+pseudo_bulk_norm <- readRDS("../../data/commpass_explorer/pseudobulk_data_manuscript_LogNormalize.rds")
 
 clinical_data$PFS <- as.numeric(as.character(clinical_data$PFS))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
