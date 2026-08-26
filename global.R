@@ -194,7 +194,8 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
                                       min_percentile = 0, max_percentile = 100) {
   if (is.null(gene) || gene == "" || !gene %in% rownames(bulkseq_tpm)) return(clinical_data)
 
-  gene_expr <- bulkseq_tpm[gene, ]
+  # is.finite and quantile without na.rm = TRUE require purrr::flatten_dbl
+  gene_expr <- purrr::flatten_dbl(bulkseq_tpm[gene, ])
   names(gene_expr) <- colnames(bulkseq_tpm)
   gene_expr <- gene_expr[is.finite(gene_expr)]
   if (!length(gene_expr)) return(clinical_data[0, , drop = FALSE])
@@ -209,6 +210,7 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
     lower_cutoff <- quantile(gene_expr, probs = pct$min / 100)
     upper_cutoff <- quantile(gene_expr, probs = pct$max / 100)
     keep_ids <- names(gene_expr)[gene_expr >= lower_cutoff & gene_expr <= upper_cutoff]
+    
   }
 
   clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% keep_ids, ]
