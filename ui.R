@@ -652,7 +652,7 @@ dashboardPage(
 
       tags$p(
         strong("Reference: "),
-        "Zhang W, Acharya C.R. (Chuck), ",
+        "Zhang W, Foltz S, Acharya C.R. (Chuck), ",
         em("Multiple Myeloma Research Foundation (MMRF)"),
         strong(", "),
         " (2025). doi: ",
