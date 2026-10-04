@@ -1921,12 +1921,12 @@ shinyServer(function(input, output, session) {
   # BulkRNA-seq Distribution ----------
   draw_tpm_distr <- function() {
     data <- preprocessed_bulkseq_data()
-    tpm_distr_dens(data$combined_bulkseq_tpm, .with_display_cohort(data$clinical_combined), data$gene_interested, "bulkRNAseq")
+    tpm_distr_dens(data$combined_bulkseq_tpm, .with_display_cohort(data$clinical_combined), data$gene_interested, "bulkRNAseq", log_scale = isTRUE(input$log_bulk_tpm))
   }
 
   draw_tpm_distr_boxplot <- function() {
     data <- preprocessed_bulkseq_data()
-    tpm_boxplot(data$combined_bulkseq_tpm, .with_display_cohort(data$clinical_combined), data$gene_interested, "bulkRNAseq")
+    tpm_boxplot(data$combined_bulkseq_tpm, .with_display_cohort(data$clinical_combined), data$gene_interested, "bulkRNAseq", log_scale = isTRUE(input$log_bulk_tpm))
   }
 
   draw_tpm_survCompPlot <- function(cohort_selected, cohorting_method) {

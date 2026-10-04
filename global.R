@@ -210,7 +210,6 @@ filter_by_gene_expression <- function(clinical_data, gene = NULL,
     lower_cutoff <- quantile(gene_expr, probs = pct$min / 100)
     upper_cutoff <- quantile(gene_expr, probs = pct$max / 100)
     keep_ids <- names(gene_expr)[gene_expr >= lower_cutoff & gene_expr <= upper_cutoff]
-    
   }
 
   clinical_data <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% keep_ids, ]
@@ -1908,7 +1907,7 @@ deseq2_volcano_plotly <- function(deseq2_result, p_thr, logfc_thr, src = "volcan
 }
 
 # Function to create distribution density plot for gene of interest
-tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, data_type) {
+tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, data_type, log_scale = FALSE) {
   # Merge the datasets
   value_type <- "TPM"
   if (data_type=="scRNAseq") {
@@ -1932,6 +1931,11 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     rename(TPM = all_of(gene_interested))
+
+  if (data_type == "bulkRNAseq" && isTRUE(log_scale)) {
+    gene_data$TPM <- log1p(gene_data$TPM)
+    value_type <- "log(TPM + 1)"
+  }
 
   # Calculate median TPM for each cohort
   median_tpm <- gene_data %>%
@@ -1973,9 +1977,9 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
 }
 
 # Function to draw boxplot of tpm values and use Wilcoxon test for p values
-tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data_type) {
+tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data_type, log_scale = FALSE) {
 
-  value_label <- if (data_type == "scRNAseq") "Log-normalized Expression" else "TPM"
+  value_label <- if (data_type == "scRNAseq") "Log-normalized Expression" else if (isTRUE(log_scale)) "log(TPM + 1)" else "TPM"
   value_col   <- value_label
 
   y_mapping <- if (make.names(value_col) != value_col) paste0("`", value_col, "`") else value_col
@@ -1991,6 +1995,10 @@ tpm_boxplot <- function(count_data_tpm, clinical_combined, gene_interested, data
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
     dplyr::rename(!!value_col := all_of(gene_interested))
+
+  if (data_type == "bulkRNAseq" && isTRUE(log_scale)) {
+    gene_data[[value_col]] <- log1p(gene_data[[value_col]])
+  }
 
   max_y <- suppressWarnings(max(gene_data[[value_col]], na.rm = TRUE))
 
