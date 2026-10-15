@@ -1930,7 +1930,7 @@ tpm_distr_dens <- function(count_data_tpm, clinical_combined, gene_interested, d
   # Filter for the gene of interest
   gene_data <- merged_data %>%
     dplyr::select(Tumor_Sample_Barcode, cohort, all_of(gene_interested)) %>%
-    rename(TPM = all_of(gene_interested))
+    dplyr::rename(TPM = all_of(gene_interested))
 
   if (data_type == "bulkRNAseq" && isTRUE(log_scale)) {
     gene_data$TPM <- log1p(gene_data$TPM)
