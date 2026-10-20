@@ -574,8 +574,8 @@ dashboardPage(
                           )
                  ),
 
-                 # ---- PSEUDO-BULK TAB ----
-                 tabPanel("Pseudo-Bulk", value = "Pseudo-Bulk",
+                 # ---- PSEUDOBULK TAB ----
+                 tabPanel("Pseudobulk", value = "Pseudobulk",
                           fluidRow(
                             column(12, htmlOutput("pseudoNum"))
                           ),

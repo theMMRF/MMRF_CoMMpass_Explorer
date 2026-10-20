@@ -2246,13 +2246,14 @@ celltype_proportion <- function(cohort_info, sc_meta) {
   # Reverse the order of factors for correct stacking
   cell_proportions$celltypes <- factor(cell_proportions$celltypes, levels = rev(levels(factor(cell_proportions$celltypes))))
   ggplot(cell_proportions, aes(y = cohort, x = proportion, fill = celltypes)) +
-    geom_bar(stat = "identity", color = "black") + # Add border to the bars
+    geom_bar(stat = "identity", color = "black", show.legend = FALSE) + # Add border to the bars
     geom_label(aes(label = sprintf("%s\n%.2f%%", celltypes, proportion)),
-               position = position_stack(vjust = 0.5, reverse = TRUE), size = 3.5,
+               position = position_stack(vjust = 0.5, reverse = TRUE),
+               size = 3.5,
                fill = "white", # Background for the label
                label.padding = unit(0.15, "lines"),
                color = "black", # Set text color to black for clarity
-               fontface = "bold") +
+               fontface = "bold", show.legend = FALSE) +
     scale_fill_manual(values = colors) +
     labs(title = "Cell Proportions by Cohort", y = "Cohort", x = "Percentage (%)") +
     theme_minimal() +
