@@ -561,8 +561,9 @@ lollipop_variant_plot <- function(maf, gene, cohort_label) {
   domain_info <- .lollipop_domains(gene, fallback_length = max_position)
   domains <- domain_info$data
   protein_length <- max(domain_info$protein_length, max_position)
-  domain_height <- max(0.18, max_count * 0.035)
-  domain_gap <- domain_height * 0.18
+  #domain_height <- max(0.18, max_count * 0.035)
+  domain_height <- max(0.1, max_count * 0.1)
+  domain_gap <- domain_height * 0.5 #* 0.18
   domain_bottom <- -(domain_height + domain_gap)
 
   variant_classes <- unique(variants$classification)
@@ -665,6 +666,7 @@ lollipop_variant_plot <- function(maf, gene, cohort_label) {
       y = "Samples",
       color = "Variant classification"
     ) +
+    coord_cartesian(clip = "off") +
     theme_minimal(base_size = 12) +
     theme(
       panel.grid.minor = element_blank(),
