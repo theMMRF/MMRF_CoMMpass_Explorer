@@ -789,7 +789,7 @@ shinyServer(function(input, output, session) {
       filter_key = c("sex","race","genetic_ancestry","stage","risk","cyto_risk","cgs_risk",
                      "rna_subtype","cna_subtype","triplet","asct","regimen"),
       column     = c("Sex","Race","genetic_ancestry","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk","CGS_risk",
-                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First","ASCT_First", "regimen"),
+                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First_curated","ASCT_First_curated", "regimen_curated"),
       stringsAsFactors = FALSE
     )
 

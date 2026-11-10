@@ -922,11 +922,11 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_CNA_Subtype_Name))),
 
             # Treatment
-            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First))),
-            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First))),
+            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First_curated))),
+            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First_curated))),
 
             # Regimen
-            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$regimen)))
+            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$regimen_curated)))
           ))
         } else if (category == "molecular") {
           return(list(
@@ -1024,9 +1024,9 @@ filter_cohort_data <- function(data, filters) {
     apply_filter("Skerget_CNA_Subtype_Name", filters$cna_subtype) %>%
 
     # Treatment
-    apply_filter("Triplet_First", filters$triplet) %>%
-    apply_filter("ASCT_First", filters$asct) %>%
-    apply_filter("regimen", filters$regimen) %>%
+    apply_filter("Triplet_First_curated", filters$triplet) %>%
+    apply_filter("ASCT_First_curated", filters$asct) %>%
+    apply_filter("regimen_curated", filters$regimen) %>%
 
     # Chromosomal abnormalities
     apply_filter("chr_1q21_gain", filters$q21_gain) %>%
@@ -1069,7 +1069,7 @@ get_cohort_selected <- function(filtered_data, cohort_selected) {
 generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
   features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class",
-                "CGS_risk", "ASCT_First", "Triplet_First", "Hyperdiploidy", "chromothripsis")
+                "CGS_risk", "ASCT_First_curated", "Triplet_First_curated", "Hyperdiploidy", "chromothripsis")
 
   if (is.null(selected_data) || nrow(selected_data) == 0) {
     return(.empty_plot_message("No samples available for this cohort."))
