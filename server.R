@@ -789,7 +789,7 @@ shinyServer(function(input, output, session) {
       filter_key = c("sex","race","genetic_ancestry","stage","risk","cyto_risk","cgs_risk",
                      "rna_subtype","cna_subtype","triplet","asct","regimen"),
       column     = c("Sex","Race","genetic_ancestry","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk","CGS_risk",
-                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet_First_curated","ASCT_First_curated", "regimen_curated"),
+                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet First","ASCT First", "Regimen"),
       stringsAsFactors = FALSE
     )
 
@@ -802,9 +802,12 @@ shinyServer(function(input, output, session) {
                           cohort_id),
       filter_key = c("q21_gain","q21_amp","del13q14","del13q34","del17p13","diploidy",
                      "chromothripsis","t11_14","t4_14","maf","apobec","tp53","tp53_ns"),
-      column     = c("chr_1q21_gain","chr_1q21_amp","chr_13q14_del","chr_13q34_del","chr_17p13_del",
-                     "Hyperdiploidy","chromothripsis","t_11_14","t_4_14","MAF_MAFB","APOBEC",
-                     "TP53_Funct_Copies","TP53_NS_Mut_Count"),
+      #column     = c("chr_1q21_gain","chr_1q21_amp","chr_13q14_del","chr_13q34_del","chr_17p13_del",
+      #               "Hyperdiploidy","chromothripsis","t_11_14","t_4_14","MAF_MAFB","APOBEC",
+      #               "TP53_Funct_Copies","TP53_NS_Mut_Count"),
+      column     = c("gain(1q21)","amp(1q21)","del(13q14)","del(13q34)","del(17p13)",
+                     "Hyperdiploidy","Chromothripsis","t(11;14)","t(4;14)","MAF/MAFB","APOBEC",
+                     "TP53 Functional Copies","TP53 NS Mutation Count"),
       stringsAsFactors = FALSE
     )
 
@@ -1635,11 +1638,12 @@ shinyServer(function(input, output, session) {
     validate(need(has_event, "No events in the selected endpoint for this subset."))
 
     # build RHS
-    rhs <- if (length(dat$covars)) paste(dat$covars, collapse = " + ") else "1"
+    #ORIG rhs <- if (length(dat$covars)) paste(dat$covars, collapse = " + ") else "1"
+    rhs <- if (length(dat$covars)) paste(stringr::str_c("`", dat$covars, "`"), collapse = " + ") else "1"
     if (!is.null(strata_var)) rhs <- paste(rhs, paste0("+ strata(", strata_var, ")"))
     fml <- as.formula(paste0("survival::Surv(", dat$time, ", ", dat$event, ") ~ ", rhs))
 
-    message("Fitting formula: ", deparse(fml))
+    message("Fitting formula: ", deparse(fml, width.cutoff = 500L))
     message("Rows: ", nrow(dat$df), " | Covars: ",
             if (length(dat$covars)) paste(dat$covars, collapse = ", ") else "(intercept only)")
 
@@ -1659,7 +1663,7 @@ shinyServer(function(input, output, session) {
 
   output$cox_formula <- renderText({
     req(cox_state$formula)
-    paste("Model:", deparse(cox_state$formula))
+    paste("Model:", deparse(cox_state$formula, width.cutoff = 500L))
   })
 
   output$cox_table <- renderDT({

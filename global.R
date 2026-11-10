@@ -8,14 +8,14 @@ packages <- c("shiny", "shinydashboard", "shinyWidgets", "shinyjs", "rintrojs",
 lapply(packages, library, character.only = TRUE)
 
 # Load data ------
-bulkseq <- readRDS("../../data/commpass_explorer/bulkseq_baseline_cleaned.rds")
-bulkseq_tpm <- readRDS("../../data/commpass_explorer/bulkseq_tpm_baseline_cleaned.rds")
-clinical_data <- readRDS("../../data/commpass_explorer/clinical_data_n1141.rds")
-maf_data <- readRDS("../../data/commpass_explorer/maf_data.rds")
-sc_meta <- readRDS("../../data/commpass_explorer/sc_meta_manuscript_baseline.rds")
-ssgsea_result_ca <- readRDS("../../data/commpass_explorer/ssgsea_result_ca.rds")
-pseudo_bulk_counts <- readRDS("../../data/commpass_explorer/pseudobulk_data_manuscript_Counts.rds")
-pseudo_bulk_norm <- readRDS("../../data/commpass_explorer/pseudobulk_data_manuscript_LogNormalize.rds")
+bulkseq <- readRDS("../../data/commpass_explorer/v1/bulkseq_baseline_cleaned.rds")
+bulkseq_tpm <- readRDS("../../data/commpass_explorer/v1/bulkseq_tpm_baseline_cleaned.rds")
+clinical_data <- readRDS("../../data/commpass_explorer/v1/clinical_data_n1141.rds")
+maf_data <- readRDS("../../data/commpass_explorer/v1/maf_data.rds")
+sc_meta <- readRDS("../../data/commpass_explorer/v1/sc_meta_manuscript_baseline.rds")
+ssgsea_result_ca <- readRDS("../../data/commpass_explorer/v1/ssgsea_result_ca.rds")
+pseudo_bulk_counts <- readRDS("../../data/commpass_explorer/v1/pseudobulk_data_manuscript_Counts.rds")
+pseudo_bulk_norm <- readRDS("../../data/commpass_explorer/v1/pseudobulk_data_manuscript_LogNormalize.rds")
 
 clinical_data$PFS <- as.numeric(as.character(clinical_data$PFS))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
@@ -931,23 +931,38 @@ create_cohort_filters_ui <- function(cohort_id, category) {
         } else if (category == "molecular") {
           return(list(
             # Chromosomal abnormalities
-            create_picker_input(paste0("chr_1q21_gain_filter_", cohort_id), "1q21 Gain", sort(unique(clinical_data$chr_1q21_gain))),
-            create_picker_input(paste0("chr_1q21_amp_filter_", cohort_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
-            create_picker_input(paste0("chr_13q14_del_filter_", cohort_id), "13q14 Deletion", sort(unique(clinical_data$chr_13q14_del))),
-            create_picker_input(paste0("chr_13q34_del_filter_", cohort_id), "13q34 Deletion", sort(unique(clinical_data$chr_13q34_del))),
-            create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
+            #create_picker_input(paste0("chr_1q21_gain_filter_", cohort_id), "1q21 Gain", sort(unique(clinical_data$chr_1q21_gain))),
+            #create_picker_input(paste0("chr_1q21_amp_filter_", cohort_id), "1q21 Amplification", sort(unique(clinical_data$chr_1q21_amp))),
+            #create_picker_input(paste0("chr_13q14_del_filter_", cohort_id), "13q14 Deletion", sort(unique(clinical_data$chr_13q14_del))),
+            #create_picker_input(paste0("chr_13q34_del_filter_", cohort_id), "13q34 Deletion", sort(unique(clinical_data$chr_13q34_del))),
+            #create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "17p13 Deletion", sort(unique(clinical_data$chr_17p13_del))),
+            #create_picker_input(paste0("diploidy_filter_", cohort_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
+            #create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
+
+            create_picker_input(paste0("chr_1q21_gain_filter_", cohort_id), "1q21 Gain", sort(unique(clinical_data$"gain(1q21)"))),
+            create_picker_input(paste0("chr_1q21_amp_filter_", cohort_id), "1q21 Amplification", sort(unique(clinical_data$"amp(1q21)"))),
+            create_picker_input(paste0("chr_13q14_del_filter_", cohort_id), "13q14 Deletion", sort(unique(clinical_data$"del(13q14)"))),
+            create_picker_input(paste0("chr_13q34_del_filter_", cohort_id), "13q34 Deletion", sort(unique(clinical_data$"del(13q34)"))),
+            create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "17p13 Deletion", sort(unique(clinical_data$"del(17p13)"))),
             create_picker_input(paste0("diploidy_filter_", cohort_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
-            create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
+            create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$Chromothripsis))),
 
             # Translocations
-            create_picker_input(paste0("t_11_14_filter_", cohort_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
-            create_picker_input(paste0("t_4_14_filter_", cohort_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
+            #create_picker_input(paste0("t_11_14_filter_", cohort_id), "t(11;14)", sort(unique(clinical_data$t_11_14))),
+            #create_picker_input(paste0("t_4_14_filter_", cohort_id), "t(4;14)", sort(unique(clinical_data$t_4_14))),
+
+            create_picker_input(paste0("t_11_14_filter_", cohort_id), "t(11;14)", sort(unique(clinical_data$"t(11;14)"))),
+            create_picker_input(paste0("t_4_14_filter_", cohort_id), "t(4;14)", sort(unique(clinical_data$"t(4;14)"))),
 
             # Mutational markers
-            create_picker_input(paste0("maf_filter_", cohort_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
+            #create_picker_input(paste0("maf_filter_", cohort_id), "MAF/MAFB", sort(unique(clinical_data$MAF_MAFB))),
             create_picker_input(paste0("apobec_filter_", cohort_id), "APOBEC", sort(unique(clinical_data$APOBEC))),
-            create_picker_input(paste0("tp53_filter_", cohort_id), "TP53 Functional Copies", sort(unique(clinical_data$TP53_Funct_Copies))),
-            create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$TP53_NS_Mut_Count)))
+            #create_picker_input(paste0("tp53_filter_", cohort_id), "TP53 Functional Copies", sort(unique(clinical_data$TP53_Funct_Copies))),
+            #create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$TP53_NS_Mut_Count)))
+
+            create_picker_input(paste0("maf_filter_", cohort_id), "MAF/MAFB", sort(unique(clinical_data$"MAF/MAFB"))),
+            create_picker_input(paste0("tp53_filter_", cohort_id), "TP53 Functional Copies", sort(unique(clinical_data$"TP53 Functional Copies"))),
+            create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$"TP53 NS Mutation Count")))
           ))
         }
     )
@@ -1069,7 +1084,7 @@ get_cohort_selected <- function(filtered_data, cohort_selected) {
 generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
   features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class",
-                "CGS_risk", "ASCT_First_curated", "Triplet_First_curated", "Hyperdiploidy", "chromothripsis")
+                "CGS_risk", "ASCT First", "Triplet First", "Hyperdiploidy", "Chromothripsis")
 
   if (is.null(selected_data) || nrow(selected_data) == 0) {
     return(.empty_plot_message("No samples available for this cohort."))
