@@ -1428,8 +1428,8 @@ shinyServer(function(input, output, session) {
     req(filtered_data$combined)
     plot_cohort_survival(
       data      = filtered_data$combined,
-      time_col  = "ttct2line",
-      event_col = "censt2line",
+      time_col  = "ttct2line_curated",
+      event_col = "censt2line_curated",
       xlab      = "Time to Second Line (Days)",
       break_by  = 500,
       legend_labs = unname(.cohort_labels())

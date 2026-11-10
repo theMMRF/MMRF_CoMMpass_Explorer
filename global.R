@@ -21,8 +21,8 @@ clinical_data$PFS <- as.numeric(as.character(clinical_data$PFS))
 clinical_data$PFS_event <- as.numeric(as.character(clinical_data$PFS_event))
 clinical_data$OS <- as.numeric(as.character(clinical_data$OS))
 clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
-clinical_data$ttct2line <- as.numeric(as.character(clinical_data$ttct2line))
-clinical_data$censt2line <- as.numeric(as.character(clinical_data$censt2line))
+clinical_data$ttct2line_curated <- as.numeric(as.character(clinical_data$ttct2line_curated))
+clinical_data$censt2line_curated <- as.numeric(as.character(clinical_data$censt2line_curated))
 
 clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
                                  levels = c("Standard", "High"))
@@ -249,7 +249,7 @@ survival_event_column <- function(surv_var) {
     surv_var,
     PFS = "PFS_event",
     OS = "OS_event",
-    ttct2line = "censt2line",
+    ttct2line_curated = "censt2line_curated",
     NULL
   )
 }
@@ -1476,7 +1476,7 @@ create_significance_table <- function(data, clinical_features, continuous_featur
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
   default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",
                        "PFS_event", "PFS", "OS",
-                       "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event", "ttct2line", "censt2line")
+                       "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event", "ttct2line_curated", "censt2line_curated")
 
   if (!is.null(exclude_cols)) {
     exclude_cols <- c(default_exclude, exclude_cols)
@@ -1594,8 +1594,8 @@ plot_cohort_survival <- function(data,
     )
   } else if (identical(ep, "TT2L")) {
     list(
-      time  = "ttct2line",
-      event = "censt2line",
+      time  = "ttct2line_curated",
+      event = "censt2line_curated",
       label = "Time to Second Line"
     )
   } else {  # default to PFS

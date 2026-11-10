@@ -58,7 +58,7 @@ dashboardPage(
                                               choices = c(
                                                 "PFS (days)"               = "PFS",
                                                 "OS (days)"                = "OS",
-                                                "Time to Second Line (days)"  = "ttct2line"
+                                                "Time to Second Line (days)"  = "ttct2line_curated"
                                               ),
                                               selected = "PFS"),
                                   checkboxInput("require_surv_event_cohort1", "Require event = 1", FALSE),
@@ -125,7 +125,7 @@ dashboardPage(
                                               choices = c(
                                                 "PFS (days)"               = "PFS",
                                                 "OS (days)"                = "OS",
-                                                "Time to Second Line (days)"  = "ttct2line"
+                                                "Time to Second Line (days)"  = "ttct2line_curated"
                                               ),
                                               selected = "PFS"),
                                   checkboxInput("require_surv_event_cohort2", "Require event = 1", FALSE),
