@@ -462,9 +462,12 @@ dashboardPage(
                  column(12, htmlOutput("bulkNum"))
                ),
                fluidRow(
-                 box(title = "Distribution", width = 12,
+                 box(title = "Select gene", width = 12,
                      selectizeInput("gene_search_bulk_distr", "Enter Gene", choices = NULL, selected = "KRAS", options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
-                     checkboxInput("log_bulk_tpm", "Show log(TPM + 1) in expression plots", value = FALSE),
+                     checkboxInput("log_bulk_tpm", "Show log(TPM + 1) in expression plots", value = FALSE))
+               ),
+               fluidRow(
+                 box(title = "Distribution", width = 12,
                      plotlyOutput("tpm_distr"),
                      plot_export_controls_ui("tpm_distr")
                  )
