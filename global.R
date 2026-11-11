@@ -24,8 +24,8 @@ clinical_data$OS_event <- as.numeric(as.character(clinical_data$OS_event))
 clinical_data$ttct2line_curated <- as.numeric(as.character(clinical_data$ttct2line_curated))
 clinical_data$censt2line_curated <- as.numeric(as.character(clinical_data$censt2line_curated))
 
-clinical_data$CGS_risk <- factor(clinical_data$CGS_risk,
-                                 levels = c("Standard", "High"))
+clinical_data$`CGS risk` <- factor(clinical_data$`CGS risk`,
+                                   levels = c("Standard", "High"))
 
 # Safe lookup of counts from a table
 .safe_count <- function(tbl, v) {
@@ -907,26 +907,25 @@ create_cohort_filters_ui <- function(cohort_id, category) {
           return(list(
             # Demographics
             create_picker_input(paste0("sex_filter_", cohort_id), "Sex", sort(unique(clinical_data$Sex))),
-            create_picker_input(paste0("race_filter_", cohort_id), "Race (self-reported)", sort(unique(clinical_data$Race))),
-            create_picker_input(paste0("genetic_ancestry_filter_", cohort_id), "Genetic Ancestry", sort(unique(clinical_data$genetic_ancestry))),
+            create_picker_input(paste0("race_filter_", cohort_id), "Race (self-reported)", sort(unique(clinical_data$"Race (self-reported)"))),
+            create_picker_input(paste0("genetic_ancestry_filter_", cohort_id), "Genetic Ancestry", sort(unique(clinical_data$"Genetic ancestry"))),
             uiOutput(paste0("age_filter_", cohort_id)),
 
             # Clinical classification
             create_picker_input(paste0("stage_filter_", cohort_id), "ISS Stage", sort(unique(clinical_data$ISS))),
-            create_picker_input(paste0("risk_filter_", cohort_id), "IMWG Risk Classification", sort(unique(clinical_data$IMWG_Risk_Class))),
-            create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$Skerget_Cytogenetic_High_Risk))),
-            create_picker_input(paste0("cgs_risk_filter_", cohort_id), "CGS Risk (Consensus Genomic Staging)", sort(unique(clinical_data$CGS_risk))),
+            create_picker_input(paste0("risk_filter_", cohort_id), "IMWG Risk Classification", sort(unique(clinical_data$"IMWG risk"))),
+            create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$"Cytogenetic high risk (Skerget)"))),
+            create_picker_input(paste0("cgs_risk_filter_", cohort_id), "CGS Risk (Consensus Genomic Staging)", sort(unique(clinical_data$"CGS risk"))),
 
             # Subtypes
-            create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_RNA_Subtype_Name))),
-            create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$Skerget_CNA_Subtype_Name))),
+            create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$"RNA subtype (Skerget)"))),
+            create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$"CNA subtype (Skerget)"))),
 
             # Treatment
-            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$Triplet_First_curated))),
-            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$ASCT_First_curated))),
+            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$"Triplet first"))),
+            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$"Regimen"))),
+            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$"ASCT first")))
 
-            # Regimen
-            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$regimen_curated)))
           ))
         } else if (category == "molecular") {
           return(list(
@@ -1018,8 +1017,8 @@ filter_cohort_data <- function(data, filters) {
   data <- data %>%
     # Demographic filters
     apply_filter("Sex", filters$sex) %>%
-    apply_filter("Race", filters$race) %>%
-    apply_filter("genetic_ancestry", filters$genetic_ancestry) %>%
+    apply_filter("Race (self-reported)", filters$race) %>%
+    apply_filter("Genetic ancestry", filters$genetic_ancestry) %>%
     {
       if (!is.null(filters$age) && length(filters$age) == 2) {
         filter(., Age >= filters$age[1], Age <= filters$age[2])
@@ -1030,37 +1029,37 @@ filter_cohort_data <- function(data, filters) {
 
     # Clinical classification
     apply_filter("ISS", filters$stage) %>%
-    apply_filter("IMWG_Risk_Class", filters$risk) %>%
-    apply_filter("Skerget_Cytogenetic_High_Risk", filters$cyto_risk) %>%
-    apply_filter("CGS_risk", filters$cgs_risk) %>%
+    apply_filter("IMWG risk", filters$risk) %>%
+    apply_filter("Cytogenetic high risk (Skerget)", filters$cyto_risk) %>%
+    apply_filter("CGS risk", filters$cgs_risk) %>%
 
     # Subtypes
-    apply_filter("Skerget_RNA_Subtype_Name", filters$rna_subtype) %>%
-    apply_filter("Skerget_CNA_Subtype_Name", filters$cna_subtype) %>%
+    apply_filter("RNA subtype name (Skerget)", filters$rna_subtype) %>%
+    apply_filter("CNA subtype (Skerget)", filters$cna_subtype) %>%
 
     # Treatment
-    apply_filter("Triplet_First_curated", filters$triplet) %>%
-    apply_filter("ASCT_First_curated", filters$asct) %>%
-    apply_filter("regimen_curated", filters$regimen) %>%
+    apply_filter("Triplet First", filters$triplet) %>%
+    apply_filter("ASCT First", filters$asct) %>%
+    apply_filter("Regimen", filters$regimen) %>%
 
     # Chromosomal abnormalities
-    apply_filter("chr_1q21_gain", filters$q21_gain) %>%
-    apply_filter("chr_1q21_amp", filters$q21_amp) %>%
-    apply_filter("chr_13q14_del", filters$del13q14) %>%
-    apply_filter("chr_13q34_del", filters$del13q34) %>%
-    apply_filter("chr_17p13_del", filters$del17p13) %>%
+    apply_filter("gain(1q21", filters$q21_gain) %>%
+    apply_filter("amp(1q21)", filters$q21_amp) %>%
+    apply_filter("del(13q14)", filters$del13q14) %>%
+    apply_filter("del(13q34)", filters$del13q34) %>%
+    apply_filter("del(17p13)", filters$del17p13) %>%
     apply_filter("Hyperdiploidy", filters$diploidy) %>%
-    apply_filter("chromothripsis", filters$chromothripsis) %>%
+    apply_filter("Chromothripsis", filters$chromothripsis) %>%
 
     # Translocations
-    apply_filter("t_11_14", filters$t11_14) %>%
-    apply_filter("t_4_14", filters$t4_14) %>%
+    apply_filter("t(11;14)", filters$t11_14) %>%
+    apply_filter("t(4;14)", filters$t4_14) %>%
 
     # Mutational markers
-    apply_filter("MAF_MAFB", filters$maf) %>%
+    apply_filter("MAF/MAFB", filters$maf) %>%
     apply_filter("APOBEC", filters$apobec) %>%
-    apply_filter("TP53_Funct_Copies", filters$tp53) %>%
-    apply_filter("TP53_NS_Mut_Count", filters$tp53_ns)
+    apply_filter("TP53 Functional Copies", filters$tp53) %>%
+    apply_filter("TP53 NS Mutation Count", filters$tp53_ns)
 
   return(data)
 }
@@ -1083,8 +1082,8 @@ get_cohort_selected <- function(filtered_data, cohort_selected) {
 
 generate_summary_plot <- function(cohort_selected, filtered_data) {
   selected_data <- filtered_data[[cohort_selected]]
-  features <- c("Race", "Sex", "Age_range", "IMWG_Risk_Class",
-                "CGS_risk", "ASCT First", "Triplet First", "Hyperdiploidy", "Chromothripsis")
+  features <- c("Race (self-reported)", "Sex", "Age range", "IMWG risk",
+                "CGS risk", "ASCT First", "Triplet First", "Hyperdiploidy", "Chromothripsis")
 
   if (is.null(selected_data) || nrow(selected_data) == 0) {
     return(.empty_plot_message("No samples available for this cohort."))
@@ -1121,6 +1120,7 @@ generate_summary_plot <- function(cohort_selected, filtered_data) {
 create_categorical_plot <- function(data, feature, feature_label) {
   cohort_levels <- unique(as.character(data$cohort))
   cohort_colors <- setNames(c("#E87D72", "#5BAEB0")[seq_along(cohort_levels)], cohort_levels)
+
   plot_data <- data %>%
     group_by(cohort, !!sym(feature)) %>%
     summarise(n = n(), .cohorts = "drop") %>%
@@ -1130,9 +1130,22 @@ create_categorical_plot <- function(data, feature, feature_label) {
       label = paste0("Cohort: ", cohort,
                      "<br>", feature_label, ": ", !!sym(feature),
                      "<br>Percentage: ", sprintf("%.2f", percentage), "%")
-    )
+    ) |>
+    rename("feature" = !!sym(feature))
 
-  ggplot(plot_data, aes_string(x = feature, y = "percentage", fill = "cohort", alpha = "cohort", text = "label")) +
+  feature_levels <- sort(unique(plot_data$feature))
+  feature_levels_missing <- c(feature_levels[!is.na(feature_levels)], "Missing")
+
+  plot_data <- plot_data |>
+    mutate(feature = replace_na(feature, "Missing"),
+           feature = factor(feature, levels = feature_levels_missing, ordered = TRUE))
+
+  ggplot(plot_data,
+         aes(x = feature,
+             y = percentage,
+             fill = cohort,
+             alpha = cohort,
+             text = label)) +
     geom_bar(stat = "identity", position = "dodge") +
     labs(x = feature_label, y = "Percentage") +
     scale_alpha_manual(values = setNames(rep(0.9, length(cohort_levels)), cohort_levels)) +
@@ -1143,6 +1156,7 @@ create_categorical_plot <- function(data, feature, feature_label) {
 
 # Create distribution plot data for continuous variables
 create_continuous_plot <- function(data, feature, feature_label) {
+
   cohort_levels <- unique(as.character(data$cohort))
   cohort_colors <- setNames(c("#E87D72", "#5BAEB0")[seq_along(cohort_levels)], cohort_levels)
   data <- data %>%
@@ -1151,14 +1165,24 @@ create_continuous_plot <- function(data, feature, feature_label) {
         "Cohort: ", cohort,
         "<br>", feature_label, ": ", sprintf("%.2f", !!rlang::sym(feature))
       )
-    )
+    ) |>
+    dplyr::select(cohort,
+           "feature" = feature,
+           label)
 
-  ggplot(data, aes_string(x = "cohort", y = feature, fill = "cohort")) +
+  ggplot(data, aes(x = cohort,
+                   y = feature,
+                   fill = cohort)) +
     # Cleaner boxplot
     geom_boxplot(width = 0.5, outlier.shape = NA, color = "#2b2b2b", alpha = 0.9) +
     # Light jitter to reveal distribution
-    geom_jitter(aes_string(text = "label", color = "cohort"),
-                width = 0.12, size = 1.6, alpha = 0.45, show.legend = FALSE) +
+    geom_jitter(aes_string(#text = "label",
+                           color = "cohort"),
+                height = 0,
+                width = 0.1,
+                size = 1.6,
+                alpha = 0.45,
+                show.legend = FALSE) +
     # Emphasize the median
     stat_summary(fun = median, geom = "point",
                  shape = 21, size = 3.2, fill = "white", color = "black") +
@@ -1489,7 +1513,7 @@ create_significance_table <- function(data, clinical_features, continuous_featur
 # Utils
 # Get clinical feature choices for selectInput
 get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
-  default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx",
+  default_exclude <- c("public_id", "Tumor_Sample_Barcode", "Tx", "Regimen",
                        "PFS_event", "PFS", "OS",
                        "OS_event", "PFS_1", "PFS_1_censored", "PFS_1_event", "ttct2line_curated", "censt2line_curated")
 
@@ -1504,7 +1528,7 @@ get_clinical_feature_choices <- function(clinical_data, exclude_cols = NULL) {
 
 # Define continuous features
 get_continuous_features <- function() {
-  c("Age", "BMI", "Serum_B2M", "Serum_LDH", "Creatinine")
+  c("Age", "BMI", "Serum B2M (mg/L)", "Serum LDH (ukat/L)", "Creatinine (umol/L)")
 }
 
 

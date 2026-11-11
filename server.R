@@ -373,12 +373,12 @@ shinyServer(function(input, output, session) {
   output$cohort1_preview <- renderDT({
     if (!length(user_cohorts$c1_tsb)) return(datatable(data.frame(Message = "No Cohort 1 IDs loaded")))
     dat <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% user_cohorts$c1_tsb, ]
-    datatable(dat[, c("public_id","Tumor_Sample_Barcode","Age","Sex","Race")], options = list(pageLength = 5, scrollX = TRUE))
+    datatable(dat[, c("public_id","Tumor_Sample_Barcode","Age","Sex","Race (self-reported)")], options = list(pageLength = 5, scrollX = TRUE))
   })
   output$cohort2_preview <- renderDT({
     if (!length(user_cohorts$c2_tsb)) return(datatable(data.frame(Message = "No Cohort 2 IDs loaded")))
     dat <- clinical_data[clinical_data$Tumor_Sample_Barcode %in% user_cohorts$c2_tsb, ]
-    datatable(dat[, c("public_id","Tumor_Sample_Barcode","Age","Sex","Race")], options = list(pageLength = 5, scrollX = TRUE))
+    datatable(dat[, c("public_id","Tumor_Sample_Barcode","Age","Sex","Race (self-reported)")], options = list(pageLength = 5, scrollX = TRUE))
   })
 
   output$download_unmatched_c1 <- downloadHandler(
@@ -788,8 +788,8 @@ shinyServer(function(input, output, session) {
                           cohort_id),
       filter_key = c("sex","race","genetic_ancestry","stage","risk","cyto_risk","cgs_risk",
                      "rna_subtype","cna_subtype","triplet","asct","regimen"),
-      column     = c("Sex","Race","genetic_ancestry","ISS","IMWG_Risk_Class","Skerget_Cytogenetic_High_Risk","CGS_risk",
-                     "Skerget_RNA_Subtype_Name","Skerget_CNA_Subtype_Name","Triplet First","ASCT First", "Regimen"),
+      column     = c("Sex","Race (self-reported)","Genetic ancestry","ISS","IMWG risk","Cytogenetic high risk (Skerget)","CGS risk",
+                     "RNA subtype (Skerget)","CNA subtype (Skerget)","Triplet First","ASCT First", "Regimen"),
       stringsAsFactors = FALSE
     )
 
@@ -1440,6 +1440,7 @@ shinyServer(function(input, output, session) {
   }
 
   draw_clin_distribution_ggplot <- function() {
+
     combined_data <- .with_display_cohort(filtered_data$combined)
     interested_feature <- input$clin_feature
     continuous_features <- get_continuous_features()
