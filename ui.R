@@ -584,10 +584,15 @@ dashboardPage(
                           ),
 
                           fluidRow(
-                            box(title = "Distribution", width = 12,
+                            box(title = "Select cell type and gene", width = 12,
                                 selectInput("pseudo_celltype", "Cell type", choices = names(pseudo_bulk_norm), width = "240px"),
                                 selectizeInput("gene_search_pseudo_distr", "Enter Gene", choices = NULL, selected = "KRAS",
-                                               options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px"),
+                                               options = list(create = TRUE, placeholder = 'Search for genes'), width = "300px")
+                            )
+                          ),
+
+                          fluidRow(
+                            box(title = "Distribution", width = 12,
                                 plotlyOutput("pseudo_norm_distr"),
                                 plot_export_controls_ui("pseudo_norm_distr")
                             )
