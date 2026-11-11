@@ -114,15 +114,15 @@ shinyServer(function(input, output, session) {
   }
 
   .cohort_filter_labels <- c(
-    sex = "Sex", race = "Race", genetic_ancestry = "Genetic ancestry",
-    stage = "ISS stage", risk = "IMWG risk", cyto_risk = "Cytogenetic high risk",
-    cgs_risk = "CGS risk", rna_subtype = "RNA subtype", cna_subtype = "CNA subtype",
-    triplet = "Triplet firstline", asct = "ASCT firstline", regimen = "Regimen firstline",
-    q21_gain = "1q21 gain", q21_amp = "1q21 amplification", del13q14 = "13q14 deletion",
-    del13q34 = "13q34 deletion", del17p13 = "17p13 deletion", diploidy = "Hyperdiploidy",
+    sex = "Sex", race = "Race (self-reported)", genetic_ancestry = "Genetic ancestry",
+    stage = "ISS", risk = "IMWG risk", cyto_risk = "Cytogenetic high risk (Skerget)",
+    cgs_risk = "CGS risk", rna_subtype = "RNA subtype (Skerget)", cna_subtype = "CNA subtype (Skerget)",
+    triplet = "Triplet first-line", regimen = "Regimen", asct = "ASCT first-line",
+    q21_gain = "gain(1q21)", q21_amp = "amp(1q21)", del13q14 = "del(13q14)",
+    del13q34 = "del(13q34)", del17p13 = "del(17p13)", diploidy = "Hyperdiploidy",
     chromothripsis = "Chromothripsis", t11_14 = "t(11;14)", t4_14 = "t(4;14)",
-    maf = "MAF/MAFB", apobec = "APOBEC", tp53 = "TP53 functional copies",
-    tp53_ns = "TP53 non-synonymous mutation count"
+    maf = "MAF/MAFB", apobec = "APOBEC", tp53 = "TP53 Functional Copies",
+    tp53_ns = "TP53 NS Mutation Count"
   )
 
   .describe_cohort_selection <- function(cohort_id) {
@@ -139,11 +139,20 @@ shinyServer(function(input, output, session) {
       }
     }
 
+    #age <- filters$age
+    #if (!is.null(age) && length(age) == 2) {
+    #  min_age <- min(clinical_data$Age, na.rm = TRUE)
+    #  max_age <- max(clinical_data$Age, na.rm = TRUE)
+    #  if (!identical(as.numeric(age), c(min_age, max_age))) {
+    #    parts <- c(parts, sprintf("Age: %s-%s", age[1], age[2]))
+    #  }
+    #}
+
     age <- filters$age
+    min_age <- min(clinical_data$Age, na.rm = TRUE)
+    max_age <- max(clinical_data$Age, na.rm = TRUE)
     if (!is.null(age) && length(age) == 2) {
-      min_age <- min(clinical_data$Age, na.rm = TRUE)
-      max_age <- max(clinical_data$Age, na.rm = TRUE)
-      if (!identical(as.numeric(age), c(min_age, max_age))) {
+      if (min_age != age[1] | max_age != age[2]) {
         parts <- c(parts, sprintf("Age: %s-%s", age[1], age[2]))
       }
     }

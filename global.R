@@ -908,23 +908,23 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             # Demographics
             create_picker_input(paste0("sex_filter_", cohort_id), "Sex", sort(unique(clinical_data$Sex))),
             create_picker_input(paste0("race_filter_", cohort_id), "Race (self-reported)", sort(unique(clinical_data$"Race (self-reported)"))),
-            create_picker_input(paste0("genetic_ancestry_filter_", cohort_id), "Genetic Ancestry", sort(unique(clinical_data$"Genetic ancestry"))),
+            create_picker_input(paste0("genetic_ancestry_filter_", cohort_id), "Genetic ancestry", sort(unique(clinical_data$"Genetic ancestry"))),
             uiOutput(paste0("age_filter_", cohort_id)),
 
             # Clinical classification
-            create_picker_input(paste0("stage_filter_", cohort_id), "ISS Stage", sort(unique(clinical_data$ISS))),
-            create_picker_input(paste0("risk_filter_", cohort_id), "IMWG Risk Classification", sort(unique(clinical_data$"IMWG risk"))),
-            create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic High Risk (Skerget)", sort(unique(clinical_data$"Cytogenetic high risk (Skerget)"))),
-            create_picker_input(paste0("cgs_risk_filter_", cohort_id), "CGS Risk (Consensus Genomic Staging)", sort(unique(clinical_data$"CGS risk"))),
+            create_picker_input(paste0("stage_filter_", cohort_id), "ISS", sort(unique(clinical_data$ISS))),
+            create_picker_input(paste0("risk_filter_", cohort_id), "IMWG risk", sort(unique(clinical_data$"IMWG risk"))),
+            create_picker_input(paste0("cyto_risk_filter_", cohort_id), "Cytogenetic high risk (Skerget)", sort(unique(clinical_data$"Cytogenetic high risk (Skerget)"))),
+            create_picker_input(paste0("cgs_risk_filter_", cohort_id), "CGS risk", sort(unique(clinical_data$"CGS risk"))),
 
             # Subtypes
-            create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA Subtype (Skerget)", sort(unique(clinical_data$"RNA subtype (Skerget)"))),
-            create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA Subtype (Skerget)", sort(unique(clinical_data$"CNA subtype (Skerget)"))),
+            create_picker_input(paste0("rna_subtype_filter_", cohort_id), "RNA subtype (Skerget)", sort(unique(clinical_data$"RNA subtype (Skerget)"))),
+            create_picker_input(paste0("cna_subtype_filter_", cohort_id), "CNA subtype (Skerget)", sort(unique(clinical_data$"CNA subtype (Skerget)"))),
 
             # Treatment
-            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet Firstline", sort(unique(clinical_data$"Triplet first"))),
-            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen Firstline", sort(unique(clinical_data$"Regimen"))),
-            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT Firstline", sort(unique(clinical_data$"ASCT first")))
+            create_picker_input(paste0("triplet_filter_", cohort_id), "Triplet first", sort(unique(clinical_data$"Triplet first"))),
+            create_picker_input(paste0("regimen_filter_", cohort_id), "Regimen", sort(unique(clinical_data$"Regimen"))),
+            create_picker_input(paste0("asct_filter_", cohort_id), "ASCT first", sort(unique(clinical_data$"ASCT first")))
 
           ))
         } else if (category == "molecular") {
@@ -938,11 +938,11 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             #create_picker_input(paste0("diploidy_filter_", cohort_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
             #create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$chromothripsis))),
 
-            create_picker_input(paste0("chr_1q21_gain_filter_", cohort_id), "1q21 Gain", sort(unique(clinical_data$"gain(1q21)"))),
-            create_picker_input(paste0("chr_1q21_amp_filter_", cohort_id), "1q21 Amplification", sort(unique(clinical_data$"amp(1q21)"))),
-            create_picker_input(paste0("chr_13q14_del_filter_", cohort_id), "13q14 Deletion", sort(unique(clinical_data$"del(13q14)"))),
-            create_picker_input(paste0("chr_13q34_del_filter_", cohort_id), "13q34 Deletion", sort(unique(clinical_data$"del(13q34)"))),
-            create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "17p13 Deletion", sort(unique(clinical_data$"del(17p13)"))),
+            create_picker_input(paste0("chr_1q21_gain_filter_", cohort_id), "gain(1q21)", sort(unique(clinical_data$"gain(1q21)"))),
+            create_picker_input(paste0("chr_1q21_amp_filter_", cohort_id), "amp(1q21)", sort(unique(clinical_data$"amp(1q21)"))),
+            create_picker_input(paste0("chr_13q14_del_filter_", cohort_id), "del(13q14)", sort(unique(clinical_data$"del(13q14)"))),
+            create_picker_input(paste0("chr_13q34_del_filter_", cohort_id), "del(13q34)", sort(unique(clinical_data$"del(13q34)"))),
+            create_picker_input(paste0("chr_17p13_del_filter_", cohort_id), "del(17p13)", sort(unique(clinical_data$"del(17p13)"))),
             create_picker_input(paste0("diploidy_filter_", cohort_id), "Hyperdiploidy", sort(unique(clinical_data$Hyperdiploidy))),
             create_picker_input(paste0("chromothripsis_filter_", cohort_id), "Chromothripsis", sort(unique(clinical_data$Chromothripsis))),
 
@@ -960,8 +960,8 @@ create_cohort_filters_ui <- function(cohort_id, category) {
             #create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$TP53_NS_Mut_Count)))
 
             create_picker_input(paste0("maf_filter_", cohort_id), "MAF/MAFB", sort(unique(clinical_data$"MAF/MAFB"))),
-            create_picker_input(paste0("tp53_filter_", cohort_id), "TP53 Functional Copies", sort(unique(clinical_data$"TP53 Functional Copies"))),
-            create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 Non-Synonymous Mutation Count", sort(unique(clinical_data$"TP53 NS Mutation Count")))
+            create_picker_input(paste0("tp53_filter_", cohort_id), "TP53 functional copies", sort(unique(clinical_data$"TP53 Functional Copies"))),
+            create_picker_input(paste0("tp53_ns_filter_", cohort_id), "TP53 NS mutation count", sort(unique(clinical_data$"TP53 NS Mutation Count")))
           ))
         }
     )
@@ -1034,7 +1034,7 @@ filter_cohort_data <- function(data, filters) {
     apply_filter("CGS risk", filters$cgs_risk) %>%
 
     # Subtypes
-    apply_filter("RNA subtype name (Skerget)", filters$rna_subtype) %>%
+    apply_filter("RNA subtype (Skerget)", filters$rna_subtype) %>%
     apply_filter("CNA subtype (Skerget)", filters$cna_subtype) %>%
 
     # Treatment
@@ -1043,7 +1043,7 @@ filter_cohort_data <- function(data, filters) {
     apply_filter("Regimen", filters$regimen) %>%
 
     # Chromosomal abnormalities
-    apply_filter("gain(1q21", filters$q21_gain) %>%
+    apply_filter("gain(1q21)", filters$q21_gain) %>%
     apply_filter("amp(1q21)", filters$q21_amp) %>%
     apply_filter("del(13q14)", filters$del13q14) %>%
     apply_filter("del(13q34)", filters$del13q34) %>%
