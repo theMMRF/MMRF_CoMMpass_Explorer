@@ -117,7 +117,7 @@ shinyServer(function(input, output, session) {
     sex = "Sex", race = "Race (self-reported)", genetic_ancestry = "Genetic ancestry",
     stage = "ISS", risk = "IMWG risk", cyto_risk = "Cytogenetic high risk (Skerget)",
     cgs_risk = "CGS risk", rna_subtype = "RNA subtype (Skerget)", cna_subtype = "CNA subtype (Skerget)",
-    triplet = "Triplet first-line", regimen = "Regimen", asct = "ASCT first-line",
+    triplet = "Triplet first", regimen = "Regimen", asct = "ASCT first",
     q21_gain = "gain(1q21)", q21_amp = "amp(1q21)", del13q14 = "del(13q14)",
     del13q34 = "del(13q34)", del17p13 = "del(17p13)", diploidy = "Hyperdiploidy",
     chromothripsis = "Chromothripsis", t11_14 = "t(11;14)", t4_14 = "t(4;14)",
