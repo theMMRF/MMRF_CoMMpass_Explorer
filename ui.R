@@ -163,8 +163,27 @@ dashboardPage(
   dashboardBody(
     rintrojs::introjsUI(),
     tags$head(
-      tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
+      tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
+
+      # Google Analytics
+      tags$script(
+        async = NA,
+        src = "https://www.googletagmanager.com/gtag/js?id=G-PMRE8HF26E"
+      ),
+
+      tags$script(HTML("
+      window.dataLayer = window.dataLayer || [];
+
+      function gtag(){
+        dataLayer.push(arguments);
+      }
+
+      gtag('js', new Date());
+
+      gtag('config', 'G-PMRE8HF26E');
+    "))
     ),
+
     tabsetPanel(
       id = "main_tabs",
       tabPanel("Upload Cohorts", value = "Custom Cohorts",
